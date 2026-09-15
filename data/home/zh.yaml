@@ -1,11 +1,15 @@
 {
   "sections": [
     "hero",
-    "cards"
+    "code-plate",
+    "cards",
+    "capabilities",
+    "faq",
+    "cta"
   ],
   "hero": {
     "align": "center",
-    "eyebrow": "KingbaseES DBA Toolkit",
+    "eyebrow": "KINGBASEES · CLI DBA TOOLKIT",
     "title_lines": [
       {
         "words": [
@@ -13,14 +17,27 @@
             "text": "kbdiag"
           }
         ]
+      },
+      {
+        "words": [
+          {
+            "text": "从巡检到定位问题"
+          }
+        ]
       }
     ],
-    "lead": "巡检、深查、根因诊断。",
+    "lead": "面向 KingbaseES 的命令行诊断工具集。查看实例与主备状态，深入 SQL、锁和索引，再沿诊断证据继续排查。",
     "actions": [
       {
-        "label": "快速开始",
+        "label": "开始第一次巡检",
         "url": "docs/get-started/",
-        "style": "primary"
+        "style": "primary",
+        "icon": "fa-solid fa-terminal"
+      },
+      {
+        "label": "了解全部功能",
+        "url": "docs/features/",
+        "style": "ghost"
       },
       {
         "label": "GitHub",
@@ -29,20 +46,151 @@
       }
     ]
   },
+  "code-plate": {
+    "eyebrow": "从一个问题开始",
+    "title": "现在正常吗？接下来查什么？",
+    "desc": "以下是命令使用示例，不是现场执行结果。先完成安装与连接配置，再在目标主机运行。",
+    "lang": "bash",
+    "code": "# 1. 查看健康状态\n~/kbdiag check\n\n# 2. 发现锁等待时继续深查\n~/kbdiag locks wait\n\n# 3. 关联多项指标，查看诊断建议\n~/kbdiag diagnose"
+  },
   "cards": {
-    "title": "文档",
-    "columns": 2,
+    "eyebrow": "按问题找到入口",
+    "title": "六类能力，覆盖常见 DBA 工作",
+    "columns": 3,
     "items": [
       {
-        "title": "快速开始",
-        "desc": "安装与首次检查",
-        "url": "docs/get-started/"
+        "title": "健康巡检",
+        "desc": "数据库现在正常吗？查看健康告警并生成巡检报告。",
+        "url": "docs/features/#health",
+        "icon": "fa-solid fa-heart-pulse"
       },
       {
-        "title": "使用手册",
-        "desc": "命令、参数与配置",
-        "url": "docs/reference/"
+        "title": "主备与复制",
+        "desc": "查看拓扑、复制延迟，以及切换前的就绪条件。",
+        "url": "docs/features/#replication",
+        "icon": "fa-solid fa-server"
+      },
+      {
+        "title": "SQL 与性能",
+        "desc": "区分当前慢查询、历史 SQL 统计和区间负载。",
+        "url": "docs/features/#performance",
+        "icon": "fa-solid fa-gauge-high"
+      },
+      {
+        "title": "锁与会话",
+        "desc": "从等待会话继续检查阻塞关系和关联 SQL。",
+        "url": "docs/features/#locks",
+        "icon": "fa-solid fa-lock"
+      },
+      {
+        "title": "空间与维护",
+        "desc": "查看空间分布、索引问题和列统计信息。",
+        "url": "docs/features/#maintenance",
+        "icon": "fa-solid fa-database"
+      },
+      {
+        "title": "综合诊断与现场采集",
+        "desc": "关联异常信号，保留供后续分析的现场信息。",
+        "url": "docs/features/#diagnosis",
+        "icon": "fa-solid fa-magnifying-glass"
       }
     ]
+  },
+  "capabilities": {
+    "eyebrow": "看 · 查 · 断",
+    "title": "从状态出发，逐步深入",
+    "items": [
+      {
+        "ref": "01 / 看",
+        "title": "先获得确定的状态",
+        "bullets": [
+          "实例是否能连接？主备角色是什么？",
+          "关注 WARN / FAIL，再决定是否深入。"
+        ],
+        "url": "docs/get-started/",
+        "visual": {
+          "type": "code",
+          "title": "kbdiag",
+          "lines": [
+            {
+              "text": "~/kbdiag status"
+            },
+            {
+              "text": "~/kbdiag check"
+            }
+          ]
+        }
+      },
+      {
+        "ref": "02 / 查",
+        "title": "围绕一个问题深查",
+        "bullets": [
+          "慢 SQL、锁等待、索引各有独立入口。",
+          "保留具体会话、对象和指标，验证初步判断。"
+        ],
+        "url": "docs/features/",
+        "visual": {
+          "type": "code",
+          "title": "kbdiag",
+          "lines": [
+            {
+              "text": "~/kbdiag perf slow"
+            },
+            {
+              "text": "~/kbdiag locks wait"
+            },
+            {
+              "text": "~/kbdiag idx"
+            }
+          ]
+        }
+      },
+      {
+        "ref": "03 / 断",
+        "title": "把证据连成排查路径",
+        "bullets": [
+          "查看多项信号关联形成的诊断建议。",
+          "用深查命令复核，再决定后续处理。"
+        ],
+        "url": "docs/features/#diagnosis",
+        "visual": {
+          "type": "code",
+          "title": "kbdiag",
+          "lines": [
+            {
+              "text": "~/kbdiag diagnose"
+            },
+            {
+              "text": "~/kbdiag advisor"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "faq": {
+    "title": "开始前，了解这些边界",
+    "style": "flat",
+    "items": [
+      {
+        "question": "需要部署一个服务吗？",
+        "answer": "工具以单文件脚本运行在数据库主机上，调用已有的 ksql 和系统工具。无需为 kbdiag 单独部署 Web 服务；集群相关能力按需使用 repmgr。"
+      },
+      {
+        "question": "可以自动修复问题吗？",
+        "answer": "诊断结果用于辅助判断。`advisor --fix` 生成 SQL，不直接执行；kill 会影响查询或会话；workload 在部分条件下会补建快照。各命令的操作边界见功能概览。"
+      },
+      {
+        "question": "单机和主备都能使用吗？",
+        "answer": "支持 KingbaseES V8R6+ 单机和 repmgr 主备环境。部分信息取决于当前节点角色、数据库权限和可选扩展；缺少数据不代表系统没有问题。"
+      }
+    ]
+  },
+  "cta": {
+    "title": "完成第一次巡检",
+    "text": "准备 KingbaseES V8R6+ 主机与数据库账号，安装单文件工具，从 status 和 check 开始。",
+    "label": "打开快速开始",
+    "url": "docs/get-started/",
+    "style": "primary"
   }
 }

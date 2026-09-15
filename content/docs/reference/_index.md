@@ -1,6 +1,6 @@
 ---
 title: "User manual"
-weight: 30
+weight: 90
 type: docs
 cascade:
   type: docs

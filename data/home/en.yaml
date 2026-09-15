@@ -1,11 +1,15 @@
 {
   "sections": [
     "hero",
-    "cards"
+    "code-plate",
+    "cards",
+    "capabilities",
+    "faq",
+    "cta"
   ],
   "hero": {
     "align": "center",
-    "eyebrow": "KingbaseES DBA Toolkit",
+    "eyebrow": "KINGBASEES · CLI DBA TOOLKIT",
     "title_lines": [
       {
         "words": [
@@ -13,14 +17,27 @@
             "text": "kbdiag"
           }
         ]
+      },
+      {
+        "words": [
+          {
+            "text": "From health checks to diagnosis"
+          }
+        ]
       }
     ],
-    "lead": "Inspect health, investigate performance, diagnose causes.",
+    "lead": "A command-line diagnostic toolkit for KingbaseES. Inspect instances and replication, investigate SQL, locks and indexes, then follow the evidence.",
     "actions": [
       {
-        "label": "Get started",
+        "label": "Run your first check",
         "url": "docs/get-started/",
-        "style": "primary"
+        "style": "primary",
+        "icon": "fa-solid fa-terminal"
+      },
+      {
+        "label": "Explore capabilities",
+        "url": "docs/features/",
+        "style": "ghost"
       },
       {
         "label": "GitHub",
@@ -29,20 +46,151 @@
       }
     ]
   },
+  "code-plate": {
+    "eyebrow": "START WITH A QUESTION",
+    "title": "Is it healthy? What should I inspect next?",
+    "desc": "Command examples, not captured output. Install and configure the connection before running them on the target host.",
+    "lang": "bash",
+    "code": "# 1. Check health\n~/kbdiag check\n\n# 2. If lock waits appear, inspect them\n~/kbdiag locks wait\n\n# 3. Correlate signals and review recommendations\n~/kbdiag diagnose"
+  },
   "cards": {
-    "title": "Documentation",
-    "columns": 2,
+    "eyebrow": "FIND YOUR STARTING POINT",
+    "title": "Six capabilities for everyday DBA work",
+    "columns": 3,
     "items": [
       {
-        "title": "Get started",
-        "desc": "Install and run your first check",
-        "url": "docs/get-started/"
+        "title": "Health checks",
+        "desc": "Is the database healthy? Review findings and create an inspection report.",
+        "url": "docs/features/#health",
+        "icon": "fa-solid fa-heart-pulse"
       },
       {
-        "title": "User manual",
-        "desc": "Commands, flags, and configuration",
-        "url": "docs/reference/"
+        "title": "Replication & HA",
+        "desc": "Inspect topology, replication lag and failover readiness.",
+        "url": "docs/features/#replication",
+        "icon": "fa-solid fa-server"
+      },
+      {
+        "title": "SQL & performance",
+        "desc": "Separate active slow queries, statement history and interval workload.",
+        "url": "docs/features/#performance",
+        "icon": "fa-solid fa-gauge-high"
+      },
+      {
+        "title": "Locks & sessions",
+        "desc": "Investigate waiting sessions, blockers and related SQL.",
+        "url": "docs/features/#locks",
+        "icon": "fa-solid fa-lock"
+      },
+      {
+        "title": "Space & maintenance",
+        "desc": "Inspect storage, index findings and column statistics.",
+        "url": "docs/features/#maintenance",
+        "icon": "fa-solid fa-database"
+      },
+      {
+        "title": "Diagnosis & incident capture",
+        "desc": "Correlate signals and preserve incident state for later investigation.",
+        "url": "docs/features/#diagnosis",
+        "icon": "fa-solid fa-magnifying-glass"
       }
     ]
+  },
+  "capabilities": {
+    "eyebrow": "INSPECT · INVESTIGATE · DIAGNOSE",
+    "title": "Go deeper as the evidence develops",
+    "items": [
+      {
+        "ref": "01 / INSPECT",
+        "title": "Start with the facts",
+        "bullets": [
+          "Is the instance reachable? What is its role?",
+          "Review WARN / FAIL findings before choosing the next check."
+        ],
+        "url": "docs/get-started/",
+        "visual": {
+          "type": "code",
+          "title": "kbdiag",
+          "lines": [
+            {
+              "text": "~/kbdiag status"
+            },
+            {
+              "text": "~/kbdiag check"
+            }
+          ]
+        }
+      },
+      {
+        "ref": "02 / INVESTIGATE",
+        "title": "Investigate one question",
+        "bullets": [
+          "Use dedicated commands for slow SQL, lock waits and indexes.",
+          "Inspect the sessions, objects and metrics behind a finding."
+        ],
+        "url": "docs/features/",
+        "visual": {
+          "type": "code",
+          "title": "kbdiag",
+          "lines": [
+            {
+              "text": "~/kbdiag perf slow"
+            },
+            {
+              "text": "~/kbdiag locks wait"
+            },
+            {
+              "text": "~/kbdiag idx"
+            }
+          ]
+        }
+      },
+      {
+        "ref": "03 / DIAGNOSE",
+        "title": "Connect the evidence",
+        "bullets": [
+          "Review diagnostic recommendations across multiple signals.",
+          "Verify with focused commands before taking action."
+        ],
+        "url": "docs/features/#diagnosis",
+        "visual": {
+          "type": "code",
+          "title": "kbdiag",
+          "lines": [
+            {
+              "text": "~/kbdiag diagnose"
+            },
+            {
+              "text": "~/kbdiag advisor"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "faq": {
+    "title": "Before you start",
+    "style": "flat",
+    "items": [
+      {
+        "question": "Do I need another service?",
+        "answer": "The single-file script runs on the database host using ksql and system utilities. No separate kbdiag web service is required; cluster features use repmgr where available."
+      },
+      {
+        "question": "Does it repair problems automatically?",
+        "answer": "Findings support your judgment. `advisor --fix` emits SQL without executing it; kill affects queries or sessions; workload may create a snapshot in some conditions. See the capabilities page for details."
+      },
+      {
+        "question": "Can I use it on standalone and HA instances?",
+        "answer": "The documented target is KingbaseES V8R6+ on standalone or repmgr HA deployments. Available evidence depends on node role, database privileges and optional extensions; missing data does not prove health."
+      }
+    ]
+  },
+  "cta": {
+    "title": "Run your first inspection",
+    "text": "Prepare a KingbaseES V8R6+ host and database account, install the single-file tool, and start with status and check.",
+    "label": "Open the quick start",
+    "url": "docs/get-started/",
+    "style": "primary"
   }
 }

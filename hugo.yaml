@@ -13,7 +13,7 @@ languages:
     weight: 1
     title: *siteTitle
     params:
-      description: Documentation, updates, and guides for your project.
+      description: Inspect KingbaseES health, investigate SQL and locks, and follow diagnostic evidence.
   zh:
     label: 简体中文
     locale: zh-CN
@@ -21,7 +21,7 @@ languages:
     title: *siteTitle
     hasCJKLanguage: true
     params:
-      description: 你的项目文档、动态与指南。
+      description: 面向 KingbaseES 的命令行诊断工具集：日常巡检、SQL 与锁排查、主备检查和根因分析。
   # Keep French declared so Hugo recognizes .fr.md as a disabled translation.
   fr:
     label: Français
