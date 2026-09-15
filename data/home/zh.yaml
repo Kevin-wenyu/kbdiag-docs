@@ -1,0 +1,48 @@
+{
+  "sections": [
+    "hero",
+    "cards"
+  ],
+  "hero": {
+    "align": "center",
+    "eyebrow": "KingbaseES DBA Toolkit",
+    "title_lines": [
+      {
+        "words": [
+          {
+            "text": "kbdiag"
+          }
+        ]
+      }
+    ],
+    "lead": "巡检、深查、根因诊断。",
+    "actions": [
+      {
+        "label": "快速开始",
+        "url": "docs/get-started/",
+        "style": "primary"
+      },
+      {
+        "label": "GitHub",
+        "url": "https://github.com/Kevin-wenyu/kbdiag",
+        "style": "ghost"
+      }
+    ]
+  },
+  "cards": {
+    "title": "文档",
+    "columns": 2,
+    "items": [
+      {
+        "title": "快速开始",
+        "desc": "安装与首次检查",
+        "url": "docs/get-started/"
+      },
+      {
+        "title": "使用手册",
+        "desc": "命令、参数与配置",
+        "url": "docs/reference/"
+      }
+    ]
+  }
+}

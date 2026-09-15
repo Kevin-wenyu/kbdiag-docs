@@ -1,0 +1,48 @@
+{
+  "sections": [
+    "hero",
+    "cards"
+  ],
+  "hero": {
+    "align": "center",
+    "eyebrow": "KingbaseES DBA Toolkit",
+    "title_lines": [
+      {
+        "words": [
+          {
+            "text": "kbdiag"
+          }
+        ]
+      }
+    ],
+    "lead": "Inspect health, investigate performance, diagnose causes.",
+    "actions": [
+      {
+        "label": "Get started",
+        "url": "docs/get-started/",
+        "style": "primary"
+      },
+      {
+        "label": "GitHub",
+        "url": "https://github.com/Kevin-wenyu/kbdiag",
+        "style": "ghost"
+      }
+    ]
+  },
+  "cards": {
+    "title": "Documentation",
+    "columns": 2,
+    "items": [
+      {
+        "title": "Get started",
+        "desc": "Install and run your first check",
+        "url": "docs/get-started/"
+      },
+      {
+        "title": "User manual",
+        "desc": "Commands, flags, and configuration",
+        "url": "docs/reference/"
+      }
+    ]
+  }
+}
