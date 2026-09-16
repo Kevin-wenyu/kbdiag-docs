@@ -19,3 +19,5 @@ cascade:
 - [使用手册](reference/)：查阅完整命令、参数与环境变量。
 
 第一次使用，先完成一次 `status` 和 `check`。已经遇到具体问题，可以从功能概览选命令，再到手册查参数。
+
+[按场景排查：慢 SQL 与锁等待]({{< relref "/docs/scenarios" >}})

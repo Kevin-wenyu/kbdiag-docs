@@ -112,3 +112,5 @@ Most commands support `--format json`; `watch` does not. Judgment commands such 
 ```
 
 Verify the behavior of the command you integrate. See [exit codes](../get-started/#exit-codes).
+
+[Troubleshooting: slow SQL and lock waits]({{< relref "/docs/scenarios" >}})

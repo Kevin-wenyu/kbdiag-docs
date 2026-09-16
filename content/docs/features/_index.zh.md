@@ -112,3 +112,5 @@ weight: 20
 ```
 
 接入前请核实具体命令行为，见[退出码说明](../get-started/#exit-codes)。
+
+[按场景排查：慢 SQL 与锁等待]({{< relref "/docs/scenarios" >}})

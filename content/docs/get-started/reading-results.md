@@ -1,32 +1,47 @@
 ---
-title: "Reading check results"
-description: "Use an explicitly illustrative excerpt to understand verdicts, thresholds and next steps."
+title: "Read a real health check"
+description: "Real lab output, exit status and next steps."
 weight: 10
 ---
 
-## Provenance {#provenance}
+Captured on 2026-09-16 (UTC+08) on a local KingbaseES V008R006C009B0014 primary, database `test`, using `dist/kbdiag` from source commit `3bea0be`. This is lab evidence, not production validation. PIDs, counts and timings belong to this capture only.
 
-This is an **illustrative excerpt with invented values, written to match the current output format**. It is not captured from a test host and does not represent a complete inspection.
-
-A real capture should record the tool version, database version, node role, timestamp, full command and exit code. 
-
-```text
-[OK] Connections: 4% (8/200)
-[WARN] Waiting locks: 2
-```
-
-## Read each line {#interpretation}
-
-- `Connections`: the example shows 8 connections out of 200, an integer percentage of 4%. An OK here does not mean all other checks passed.
-- `Waiting locks`: the current code counts ungranted records in `sys_locks`. The value 2 counts lock records, **not necessarily two users or sessions**.
-- An excerpt cannot establish the complete command's exit status. In a full inspection, WARN without FAIL makes `check` return 1; a FAIL makes it return 2.
-
-## Next step {#next}
+## Command and complete output
 
 ```bash
-~/kbdiag locks wait
+KB_DB=test ~/kbdiag check --no-color
+rc=$?
+printf "EXIT_CODE=%s\n" "$rc"
 ```
 
-Inspect waiting relationships, sessions, SQL and the business context. This example cannot tell you which session should be terminated; do not run `kill` based on a count alone.
+```text
+==> Health check
+[OK]    Connections: 12% (12/100)
+[OK]    Long transactions: none
+[OK]    Waiting locks: none
+[WARN]  Archiver: 1407 failed file(s)
+[OK]    Autovacuum backlog: none
+[OK]    Buffer hit rate: 99.6%
+[OK]    Checkpoint pressure: 0 requested checkpoints
+[OK]    Temp file usage: 0 bytes
+[OK]    Deadlocks: none
+[OK]    Replication slot lag: 0bytes
+[OK]    BGWriter pressure: 0% backend writes
+[OK]    XID age: 4717
+[OK]    oldest active transaction: 0s
+[WARN]  WAL archiving: failing (1407 failures, last: 2026-09-16 07:05:31.025697+08) — run: kbdiag backup
+EXIT_CODE=1
+```
 
-[Back to your first inspection]({{< relref "/docs/get-started" >}}#run-check)
+## Interpretation
+
+- Connections are 12/100. An OK connection check does not cover archiving or other checks.
+- No waiting locks were found. When present, `check` counts ungranted lock records, not unique sessions.
+- The two archive warnings are related signals: do not add the two counts of 1407. Failure counters include history; compare the last failure with subsequent successes to assess current failure.
+- The complete command returned 1: WARN findings, no FAIL. A FAIL makes `check` return 2.
+
+## Next step
+
+Run `~/kbdiag backup`, then inspect the archive command, destination capacity, permissions and database logs. Do not reset statistics merely to clear a warning. This capture does not resolve or validate the archiving issue.
+
+[Investigate lock waits]({{< relref "/docs/scenarios/lock-waits" >}}) · [Back to first inspection]({{< relref "/docs/get-started" >}}#run-check)

@@ -19,3 +19,5 @@ cascade:
 - [User manual](reference/): the full command, flag and environment reference.
 
 Start with `status` and `check`. If you have a specific problem, choose a command from the capabilities page and look up its options in the manual.
+
+[Troubleshooting: slow SQL and lock waits]({{< relref "/docs/scenarios" >}})
