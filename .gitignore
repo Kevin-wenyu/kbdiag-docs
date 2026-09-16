@@ -3,3 +3,7 @@
 /.hugo_cache/
 /.hugo_build.lock
 .DS_Store
+
+# Local Python validator caches
+__pycache__/
+*.pyc

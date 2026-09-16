@@ -9,3 +9,5 @@ weight: 40
 - [正在运行的慢 SQL](slow-sql/)：找到 PID，区分主动等待与执行问题。
 - [锁等待](lock-waits/)：核对等待方与阻塞方，再决定如何处理事务。
 - [真实巡检输出]({{< relref "/docs/get-started/reading-results" >}})：理解 WARN 和退出码。
+
+- [复制延迟排查]({{< relref "/docs/scenarios/replication-lag" >}})

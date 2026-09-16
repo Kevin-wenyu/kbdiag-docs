@@ -107,3 +107,5 @@ printf 'check exit code: %s\n' "$check_rc"
 你已经确认目标实例、能够运行 `status` 和 `check`、理解检查退出码，并能根据一条发现找到下一条命令。
 
 [了解全部功能](../features/) · [查阅命令参数](../reference/)
+
+- [巡检报告样例]({{< relref "/docs/get-started/report-example" >}})

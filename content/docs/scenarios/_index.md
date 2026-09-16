@@ -9,3 +9,5 @@ Confirm the target instance before choosing a workflow. Examples use isolated la
 - [Running slow SQL](slow-sql/): find a PID and distinguish deliberate waits from execution issues.
 - [Lock waits](lock-waits/): verify waiting and blocking sessions before handling transactions.
 - [Real health check]({{< relref "/docs/get-started/reading-results" >}}): understand warnings and exit codes.
+
+- [Replication lag]({{< relref "/docs/scenarios/replication-lag" >}})

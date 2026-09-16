@@ -45,3 +45,7 @@ EXIT_CODE=1
 Run `~/kbdiag backup`, then inspect the archive command, destination capacity, permissions and database logs. Do not reset statistics merely to clear a warning. This capture does not resolve or validate the archiving issue.
 
 [Investigate lock waits]({{< relref "/docs/scenarios/lock-waits" >}}) · [Back to first inspection]({{< relref "/docs/get-started" >}}#run-check)
+
+## Follow-up repair
+
+On 2026-09-16, the repository SSH host key was independently verified and updated, and the backup check connection port/user were corrected. `sys_rman check` confirmed newly archived WAL. Both pending queues were zero; the primary had archived 35 WAL segments while historical failures remained 1422. Statistics were not reset. The sample above preserves the pre-repair state; this was not a full restore drill.

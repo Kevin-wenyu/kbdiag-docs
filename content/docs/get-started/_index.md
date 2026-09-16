@@ -107,3 +107,5 @@ The report is written to the current directory. Read its WARN / FAIL summary and
 You have identified the target instance, run `status` and `check`, understood the check's exit code, and found a follow-up command for a finding.
 
 [Explore capabilities](../features/) · [Look up command options](../reference/)
+
+- [Inspection report example]({{< relref "/docs/get-started/report-example" >}})
