@@ -4,7 +4,7 @@ description: "列出复制槽，标出未激活的槽：它们会一直保留 WA
 weight: 70
 ---
 
-采集于 2026-09-24（UTC+08），本地 KingbaseES V008R006C009B0014 主节点和备节点，数据库 `test`。工具是 Go 版源码提交 `0a4d61e` 编译的 `~/kbdiag`（linux/amd64 静态二进制）。这是测试环境实测，不代表生产环境验收。FAIL 示例是故障注入脚本造出来的：暂停备库的 WAL 接收进程，主库上的槽在 `wal_sender_timeout`（本环境 30 秒）后变成未激活，模拟备库挂掉。数值只属于本次采样。
+采集于 2026-09-24（UTC+08），本地 KingbaseES V008R006C009B0014 主节点和备节点，数据库 `test`。工具是 Go 版源码提交 `6803c61` 编译的 `~/kbdiag`（linux/amd64 静态二进制）。这是测试环境实测，不代表生产环境验收。FAIL 示例是故障注入脚本造出来的：暂停备库的 WAL 接收进程，主库上的槽在 `wal_sender_timeout`（本环境 30 秒）后变成未激活，模拟备库挂掉。数值只属于本次采样。
 
 ## 用法
 
@@ -22,11 +22,11 @@ echo EXIT_CODE=$?
 ```
 
 ```text
-slots  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:39:07+08:00)
+slots  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T07:32:44+08:00)
 
 slot.list: 1 rows
 slot_name      slot_type  active  active_pid  xmin  catalog_xmin  xmin_age  restart_lsn  retained_wal_bytes
-repmgr_slot_2  physical   true    364531      6021  -             0         0/A40F4578   0
+repmgr_slot_2  physical   true    407405      6098  -             0         0/A41581B8   0
 EXIT_CODE=0
 ```
 
@@ -44,20 +44,20 @@ echo EXIT_CODE=$?
 ```
 
 ```text
-slots  FAIL  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:39:37+08:00)
+slots  FAIL  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T07:32:43+08:00)
 
-[FAIL] slot.inactive  复制槽 repmgr_slot_2 未激活，保留 0 MB WAL，xmin 6021 压着视界
-  verify: kbdiag status  # 在备库上运行，确认它是否在线、是否在接收 WAL
+[FAIL] slot.inactive  复制槽 repmgr_slot_2 未激活，保留 0 MB WAL，xmin 6098 压着视界
+  verify: kbdiag sessions  # 在备库上运行：连不上说明备库实例挂了；列表里没有 walreceiver 进程说明它没在接收 WAL
 
 slot.list: 1 rows
 slot_name      slot_type  active  active_pid  xmin  catalog_xmin  xmin_age  restart_lsn  retained_wal_bytes
-repmgr_slot_2  physical   false   -           6021  -             0         0/A40F4578   48
+repmgr_slot_2  physical   false   -           6098  -             0         0/A41581B8   0
 EXIT_CODE=2
 ```
 
 - 未激活的槽没人消费，却会一直保留 WAL；带 `xmin` 的还会让 VACUUM 清不掉旧版本。时间一长可能写满磁盘，所以直接 FAIL，不设时间阈值。
-- 刚注入时保留量还很小（这里 48 字节，显示为 0 MB）；真实故障里它会持续增长。
-- `verify` 行建议先去备库上确认它是否还活着。备库确实废弃时才考虑删槽；kbdiag 不会替你删。
+- 刚注入时几乎还没保留 WAL（显示为 0 MB）；真实故障里它会持续增长。
+- `verify` 行建议去备库上跑 `kbdiag sessions`：连不上说明备库实例挂了；列表里没有 `walreceiver` 进程说明它没在接收 WAL。备库确实废弃时才考虑删槽；kbdiag 不会替你删。
 - 有 FAIL 时退出码 2。
 
 ## 退出码

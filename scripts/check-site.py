@@ -22,8 +22,8 @@ CORE = {
     'docs/reference/locks/': ('0a4d61e', '364809'),
     'docs/reference/txn/': ('0a4d61e', 'kbdiag_inj_2pc'),
     'docs/reference/waits/': ('0a4d61e', '364818'),
-    'docs/reference/status/': ('0a4d61e', '281992.5'),
-    'docs/reference/slots/': ('0a4d61e', 'repmgr_slot_2'),
+    'docs/reference/status/': ('6803c61', 'inst.connections'),
+    'docs/reference/slots/': ('6803c61', 'walreceiver'),
 }
 
 class Page(HTMLParser):
