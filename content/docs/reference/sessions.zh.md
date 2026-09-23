@@ -6,8 +6,6 @@ weight: 10
 
 采集于 2026-09-24（UTC+08），本地 KingbaseES V008R006C009B0014 主节点，数据库 `test`。工具是 Go 版源码提交 `84c883e` 编译的 `~/kbdiag`（linux/amd64 静态二进制）。这是测试环境实测，不代表生产环境验收。示例里的两个业务会话是故障注入脚本造出来的；PID、计数与时间只属于本次采样。
 
-Go 版正式发布（`v2.0.0-alpha.1`）之前，`sessions` 是唯一可用的命令。
-
 ## 用法
 
 ```text
@@ -75,7 +73,7 @@ EXIT_CODE=1
 ```
 
 - 320047 因为 `--active` 没有显示，但 WARN 照报：判定不受显示过滤影响。
-- `verify` 行给出下一步要跑的命令。`kbdiag session` 在后续版本提供，当前还不能用。
+- `verify` 行给出下一步要跑的命令，见 [`session`]({{< relref "/docs/reference/session" >}})。
 - 退出码 1 表示有 WARN。
 
 `--json` 输出同样的内容：`verdict`、`context`、`data`（每个探针的 `status`、`columns`、`rows`、`truncated`）、`findings`（每条带 `evidence` 和 `next`）以及 `redacted`。

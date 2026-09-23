@@ -6,8 +6,6 @@ weight: 10
 
 Captured on 2026-09-24 (UTC+08) on a local KingbaseES V008R006C009B0014 primary, database `test`, using `~/kbdiag` built from Go source commit `84c883e` (static linux/amd64 binary). This is lab evidence, not production validation. The two application sessions in the examples were created by fault-injection scripts; PIDs, counts and timings belong to this capture only.
 
-Until the Go version is released as `v2.0.0-alpha.1`, `sessions` is the only command available.
-
 ## Usage
 
 ```text
@@ -66,7 +64,7 @@ EXIT_CODE=0
 ```
 
 - Session 320047 is hidden by `--active`, but the WARN is still raised: display filters do not affect findings.
-- The `verify` line gives the next command to run. `kbdiag session` arrives in a later version and is not available yet.
+- The `verify` line gives the next command to run; see [`session`]({{< relref "/docs/reference/session" >}}).
 - Exit status 1 means at least one WARN.
 
 `--json` carries the same content: `verdict`, `context`, `data` (per probe: `status`, `columns`, `rows`, `truncated`), `findings` (each with `evidence` and `next`) and `redacted`. The symptom text is currently Chinese.

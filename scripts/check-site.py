@@ -18,6 +18,12 @@ CORE = {
     'docs/scenarios/replication-lag/': ('LSN', 'replication'),
     'docs/reference/': (),
     'docs/reference/sessions/': ('84c883e', '320047'),
+    'docs/reference/session/': ('0a4d61e', '367208'),
+    'docs/reference/locks/': ('0a4d61e', '364809'),
+    'docs/reference/txn/': ('0a4d61e', 'kbdiag_inj_2pc'),
+    'docs/reference/waits/': ('0a4d61e', '364818'),
+    'docs/reference/status/': ('0a4d61e', '281992.5'),
+    'docs/reference/slots/': ('0a4d61e', 'repmgr_slot_2'),
 }
 
 class Page(HTMLParser):
