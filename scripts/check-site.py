@@ -17,6 +17,7 @@ CORE = {
     'docs/scenarios/lock-waits/': ('81518', 'ShareLock'),
     'docs/scenarios/replication-lag/': ('LSN', 'replication'),
     'docs/reference/': (),
+    'docs/reference/sessions/': ('84c883e', '320047'),
 }
 
 class Page(HTMLParser):
