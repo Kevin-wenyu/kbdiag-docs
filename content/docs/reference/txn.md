@@ -42,7 +42,7 @@ kbdiag_inj_2pc  system  test      2026-09-24T04:38:56+08:00  7.4    6018
 EXIT_CODE=0
 ```
 
-- `session.activity` lists only sessions inside a transaction: those with a transaction start, a transaction id (`backend_xid`) or a snapshot (`backend_xmin`). Sessions whose state is hidden (no privilege, track_activities off) are listed too. The columns are those of `sessions`.
+- `session.activity` lists two kinds of session: those inside a transaction (with a transaction start, a transaction id `backend_xid` or a snapshot `backend_xmin`), and those whose state is hidden, so it cannot tell (no privilege, track_activities off). The columns are those of `sessions`.
 - `txn.prepared` lists every prepared transaction. They belong to no session, so `sessions` cannot show them.
 - Neither is past its default threshold, so the verdict is OK.
 

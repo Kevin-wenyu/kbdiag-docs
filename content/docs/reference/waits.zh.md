@@ -41,7 +41,7 @@ EXIT_CODE=0
 
 - 每行是一个（等待事件类型、等待事件、状态）组合，`sessions` 是会话数，`pids` 是这些会话的 PID，按会话数从多到少排。
 - 没在等的会话（等待事件为空）也按状态归组，所以这张表覆盖除 kbdiag 自己的连接以外的全部会话。
-- `waits` 只汇总，不判定：采到就是 OK。示例里 `Lock / relation` 那一行就是 364818 在等锁；要看等了多久、被谁挡住，用 [`locks`]({{< relref "/docs/reference/locks" >}})。
+- `waits` 只汇总，不按阈值判定：全部会话都看得见就是 OK，有看不到的会话就是 UNKNOWN（见下文）。示例里 `Lock / relation` 那一行就是 364818 在等锁；要看等了多久、被谁挡住，用 [`locks`]({{< relref "/docs/reference/locks" >}})。
 
 ## 权限不足时
 

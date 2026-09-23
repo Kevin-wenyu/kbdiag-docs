@@ -31,7 +31,7 @@ EXIT_CODE=0
 ```
 
 - `active=true`，`active_pid` 是正在用这个槽的 walsender 进程。
-- `xmin` 来自备库的 `hot_standby_feedback`；`xmin_age` 是它落后当前事务号多少。
+- `xmin` 是这个槽要求保留的最老事务号；这里是物理槽，它来自备库开着的 `hot_standby_feedback`。`xmin_age` 是它落后当前事务号多少。
 - `retained_wal_bytes` 是这个槽让实例保留的 WAL 量：主库上从当前 WAL 位置算，备库上从已回放位置算。
 
 备库上没有槽时列表为空，结论 OK。

@@ -41,7 +41,7 @@ EXIT_CODE=0
 
 - Each row is one (wait event type, wait event, state) group; `sessions` counts them and `pids` lists them. Rows are sorted by count, largest first.
 - Sessions not waiting (no wait event) are grouped by state too, so the table covers every session except kbdiag's own connection.
-- `waits` summarizes and does not judge: once collected, it is OK. The `Lock / relation` row is 364818 waiting for the lock; for how long and who blocks it, use [`locks`]({{< relref "/docs/reference/locks" >}}).
+- `waits` summarizes and applies no thresholds: it is OK when every session is visible, and UNKNOWN when some are hidden (see below). The `Lock / relation` row is 364818 waiting for the lock; for how long and who blocks it, use [`locks`]({{< relref "/docs/reference/locks" >}}).
 
 ## Without monitoring privileges
 

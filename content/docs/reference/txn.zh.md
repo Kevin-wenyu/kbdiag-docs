@@ -42,7 +42,7 @@ kbdiag_inj_2pc  system  test      2026-09-24T04:38:56+08:00  7.4    6018
 EXIT_CODE=0
 ```
 
-- `session.activity` 只列在事务里的会话：有事务开始时间、事务号（`backend_xid`）或快照（`backend_xmin`）的会话。看不到状态的会话（权限不足、关了 track_activities）也列出来。列和 `sessions` 一样。
+- `session.activity` 列两类会话：在事务里的（有事务开始时间、事务号 `backend_xid` 或快照 `backend_xmin`），以及看不到状态、无法判断是否在事务里的（权限不足、关了 track_activities）。列和 `sessions` 一样。
 - `txn.prepared` 列出所有两阶段事务。它们不属于任何会话，所以 `sessions` 看不到。
 - 两者都没到默认阈值，结论 OK。
 

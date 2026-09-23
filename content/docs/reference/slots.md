@@ -31,7 +31,7 @@ EXIT_CODE=0
 ```
 
 - `active=true`; `active_pid` is the walsender using the slot.
-- `xmin` comes from the standby's `hot_standby_feedback`; `xmin_age` is how far it lags the current transaction id.
+- `xmin` is the oldest transaction id the slot asks to keep; for this physical slot it comes from the standby's `hot_standby_feedback`. `xmin_age` is how far it lags the current transaction id.
 - `retained_wal_bytes` is the WAL this slot makes the instance keep: measured from the current WAL position on a primary, and from the replay position on a standby.
 
 On a standby with no slots the list is empty and the verdict OK.
