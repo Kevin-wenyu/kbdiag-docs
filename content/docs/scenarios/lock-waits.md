@@ -1,60 +1,89 @@
 ---
 title: "Investigate lock waits"
-description: "Verify blockers, inspect transactions and confirm recovery."
+description: "Find who waits, follow the verify line to the blocker, decide, and confirm the waits are gone."
 weight: 20
 ---
 
-Captured on 2026-09-16 (UTC+08) on a local KingbaseES V008R006C009B0014 primary, database `test`, using `dist/kbdiag` from source commit `3bea0be`. This is lab evidence, not production validation. PIDs, counts and timings belong to this capture only.
+Captured on 2026-09-24 (UTC+08) on a local KingbaseES V008R006C009B0014 primary, database `test`, using `~/kbdiag` built from Go source commit `6803c61` (static linux/amd64 binary). This is lab evidence, not production validation. PIDs, counts and timings belong to this capture only. A fault-injection script opened a transaction that took an `ACCESS EXCLUSIVE` lock on a test table and then sat idle, and a second session tried to read the table.
 
-## 1. Inspect waiting relationships
+## 1. Who is waiting?
 
 ```bash
-~/kbdiag locks wait -v --no-color --exit-code
+~/kbdiag locks
+echo EXIT_CODE=$?
 ```
-
-Save output and exit status, then inspect current sessions with `~/kbdiag sql <WAIT_PID>` and `~/kbdiag sql <BLOCK_PID>`. PIDs can disappear or be reused: recheck user, application and SQL before acting.
-
-## 2. Real lab output
-
-Two transactions updated the same row in a dedicated table. The holder paused for 28 seconds and rolled back; the waiter had a 35-second statement timeout and also rolled back after completion. This tests one row-update conflict, not a deadlock. SQL columns below retain the tool's truncation.
 
 ```text
-==> Waiting locks
-[WARN]  Waiting locks: 1 blocked session(s) (longest 6s, showing top 10)
-[OK]    Long lock waits: none > 60s
+locks  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T10:20:02+08:00)
 
-WAIT_PID  WAIT_USER  BLOCK_PID  BLOCK_USER  LOCKTYPE       MODE       WAIT     WAIT_QUERY                                                                                            BLOCK_QUERY
-81518     system     81440      system      transactionid  ShareLock  0:00:06  SET application_name='kbdiag_docs_waiter'; SET statement_timeout='35000'; BEGIN; UPDATE kbdiag_docs_  SET application_name='kbdiag_docs_holder'; BEGIN; UPDATE kbdiag_docs_20260916.lock_demo SET value=1 
+[WARN] lock.waiting  会话 435317 等 public.kbdiag_inj_lock 的 AccessShareLock 已 14 秒，被 435308 挡住
+  verify: kbdiag session 435308  # 看挡路的会话在干什么
 
-PROCESS_EXIT=1
+lock.list: 2 rows
+pid     locktype  relation                mode                 granted  wait_s  blocked_by
+435308  relation  public.kbdiag_inj_lock  AccessExclusiveLock  true     -       []
+435317  relation  public.kbdiag_inj_lock  AccessShareLock      false    13.7    [435308]
+EXIT_CODE=1
 ```
-Independent system-view evidence:
+
+- Session 435317 has waited 14 seconds for `AccessShareLock` on `public.kbdiag_inj_lock`; the direct blocker is 435308. Waits over 10 seconds are a WARN (`--lock-wait-warn` changes this).
+- `lock.list` shows both sides: 435308 holds `AccessExclusiveLock` (`granted true`), 435317 is not granted and `blocked_by` names 435308.
+- `wait_s` is measured from the waiter's last state change, so it can overstate the wait a little, never understate it.
+
+## 2. What is the blocker doing?
+
+Follow the `verify` line:
+
+```bash
+~/kbdiag session 435308
+echo EXIT_CODE=$?
+```
 
 ```text
-pid|application_name|state|wait_event_type|wait_event
-81440|kbdiag_docs_holder|active|Timeout|PgSleep
-81518|kbdiag_docs_waiter|active|Lock|transactionid
-(2 rows)
-pid|locktype|mode|granted
-81518|transactionid|ShareLock|f
-(1 row)
+session  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T10:20:02+08:00)
 
-PROCESS_EXIT=0
+[WARN] lock.waiting  会话 435317 等 public.kbdiag_inj_lock 的 AccessShareLock 已 14 秒，被 435308 挡住
+  verify: kbdiag session 435308  # 看挡路的会话在干什么
+
+lock.list: 4 rows
+pid     locktype       relation                mode                 granted  wait_s  blocked_by
+435308  relation       public.kbdiag_inj_lock  AccessExclusiveLock  true     -       []
+435308  transactionid  -                       ExclusiveLock        true     -       []
+435308  virtualxid     -                       ExclusiveLock        true     -       []
+435317  relation       public.kbdiag_inj_lock  AccessShareLock      false    14.3    [435308]
+
+session.activity: 1 rows
+pid     usename  datname  application_name        client_addr  backend_type    state                backend_xid  backend_xmin  xact_age_s  query_age_s  state_age_s  wait_event_type  wait_event  query
+435308  system   test     kbdiag_inj_lock_holder  -            client backend  idle in transaction  6099         -             14.3        14.3         14.3         Client           ClientRead  lock table kbdiag_inj_lock in access exclusive mode;
+EXIT_CODE=1
 ```
 
-## 3. Interpret the result
+- The blocker is `idle in transaction`: its last statement was `lock table kbdiag_inj_lock in access exclusive mode;` and it has been waiting for the client (`Client / ClientRead`) for 14 seconds with the transaction still open. Nothing is running; the lock is held because nobody committed or rolled back.
+- The session report repeats the lock finding because the blocked waiter is part of this session's picture.
+- If the blocker is itself waiting (its `blocked_by` is not empty), run `session` on its blocker in turn until you reach one that is not waiting. kbdiag shows one hop at a time.
+- If `blocked_by` shows `[0]`, the blocker is a prepared (two-phase) transaction with no session; find it with `kbdiag txn` on the primary.
 
-- `WAIT_PID=81518` is waiting and `BLOCK_PID=81440` holds the matching lock. This pair was verified in this controlled case only.
-- `transactionid / ShareLock` means waiting for the related transaction; it does not mean a whole table is held in ShareLock mode.
-- `WAIT` is elapsed time since query start, not precise lock-wait duration.
-- Any wait produces WARN; no wait exceeding the default 60 seconds can still produce an OK long-wait line. These are different checks.
-- Counts come from joined lock rows. Complex cases may produce multiple rows per session; do not equate them with affected users.
-- With `--exit-code`, this sample returns 1. `PROCESS_EXIT` is capture-script metadata.
+## 3. Decide and act
 
-## 4. Act and verify
+kbdiag does not end sessions. Confirm with the application owner what the transaction was for. Usually the application should commit or roll back; if it cannot, end the connection yourself, for example with `select pg_terminate_backend(435308);` in `ksql`, after checking the PID still belongs to the same user and application. Ending the blocker rolls back its transaction.
 
-Confirm with the owning application whether the transaction should continue, commit or roll back. Do not terminate a session merely because its PID appears. `kbdiag kill <PID>` cancels the current statement by default; `--terminate` ends the connection. Cancellation does not guarantee that the transaction ends or every lock is released, especially for idle-in-transaction sessions.
+In this lab run the injection script released the holder, which ended the transaction.
 
-In this experiment the holder rolled back voluntarily. Both transactions exited, the original row remained `id=1, value=0`, the dedicated table and schema were removed, and test-session and schema counts were both zero.
+## 4. Confirm
 
-After a real intervention, run `locks wait` again and check application recovery and transaction state. Current waits and cumulative deadlock statistics answer different questions; this experiment neither generated deadlocks nor reset their statistics.
+```bash
+~/kbdiag locks
+echo EXIT_CODE=$?
+```
+
+```text
+locks  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T10:20:04+08:00)
+
+lock.list: 0 rows
+pid  locktype  relation  mode  granted  wait_s  blocked_by
+EXIT_CODE=0
+```
+
+No waits, OK, exit 0. One clean sample only says the waits are gone now; if they come back, look for the application path that leaves transactions open.
+
+[Back to scenarios]({{< relref "/docs/scenarios" >}}) · [locks reference]({{< relref "/docs/reference/locks" >}})

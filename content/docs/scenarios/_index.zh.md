@@ -1,13 +1,11 @@
 ---
 title: "按场景排查"
-description: "从现象到证据，再确认处置结果。"
+description: "从症状走到证据，再确认结果。"
 weight: 40
 ---
 
-先确认连接的是目标实例，再按现象选择入口。以下示例来自隔离测试会话；不需要在生产环境复现测试负载。
+照场景走之前，先确认连的是目标实例。示例来自测试集群上的故障注入脚本，不需要在生产环境复现。
 
-- [正在运行的慢 SQL](slow-sql/)：找到 PID，区分主动等待与执行问题。
-- [锁等待](lock-waits/)：核对等待方与阻塞方，再决定如何处理事务。
-- [真实巡检输出]({{< relref "/docs/get-started/reading-results" >}})：理解 WARN 和退出码。
-
-- [复制延迟排查]({{< relref "/docs/scenarios/replication-lag" >}})
+- [长时间运行的 SQL](slow-sql/)：找到跑了一阵的语句，看它在等什么。
+- [锁等待](lock-waits/)：找到谁在等，顺着 verify 行找到挡路者，再确认等待消失。
+- [读懂一个真实结果]({{< relref "/docs/get-started/reading-results" >}})：逐行解读一个 WARN 的文本和 JSON 输出。

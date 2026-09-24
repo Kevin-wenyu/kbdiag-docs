@@ -1,116 +1,96 @@
 ---
 title: "Capabilities"
-description: "Choose commands for health, replication, SQL, locks, maintenance and diagnosis."
+description: "Choose a command by the question you need answered: instance, sessions, locks, transactions, waits, replication slots."
 weight: 20
 ---
 
-Start with the question you need to answer. Examples assume installation at `~/kbdiag`; see the [user manual](../reference/) for all options.
+Start with the question you need to answer. Examples assume the binary is at `~/kbdiag`; see the [user manual](../reference/) for every flag and output field.
 
-## Health checks {#health}
+## Instance {#instance}
 
-**Is the database healthy, and what needs attention?**
-
-- `status`: process state, connectivity, role and uptime.
-- `check`: threshold-based findings; `check --os` adds host conformance checks.
-- `report [file]`: a Markdown report assembled from existing checks.
+**What is this instance, and are connections running out?**
 
 ```bash
 ~/kbdiag status
-~/kbdiag check
-~/kbdiag report inspection.md
 ```
 
-Review WARN / FAIL findings, then choose a focused command. `report` writes a local file; it does not replace backups or continuous monitoring. Choose a new filename to avoid replacing an existing report.
+Version, role (primary / standby), uptime, database sizes, how many downstreams it sends WAL to, and connections. Connections are measured against what ordinary users may open (`max_connections` less `superuser_reserved_connections`): WARN at 80%, FAIL at 100%, adjustable with `--conn-warn` / `--conn-fail`.
 
-→ [Run and interpret your first inspection](../get-started/)
+→ [status]({{< relref "/docs/reference/status" >}})
 
-## Replication and HA {#replication}
+## Sessions {#sessions}
 
-**What is the topology? Is replication behind? Are failover prerequisites met?**
-
-- `cluster`: repmgr topology.
-- `cluster ready`: failover readiness checks.
-- `replication`: replication state and lag.
-
-```bash
-~/kbdiag cluster
-~/kbdiag replication
-~/kbdiag cluster ready
-```
-
-Primary and standby nodes expose different metrics. repmgr, node configuration and related processes determine the scope of cluster checks. Readiness checks do not perform a failover or replace a failover exercise.
-
-## SQL and performance {#performance}
-
-**What is slow now, which recorded statements consume time, and how has workload changed?**
-
-| View | Command | Focus |
-|---|---|---|
-| Current activity | `perf slow`, `wait` | Active slow queries and waits |
-| Accumulated statement statistics | `stmt` | Recorded SQL timing and calls |
-| Query plan | `explain` | Plan structure and findings to investigate |
-| Time interval | `workload` | Available historical workload evidence |
-
-```bash
-~/kbdiag perf slow
-~/kbdiag stmt
-~/kbdiag workload --from 1h --no-snapshot
-```
-
-Historical analysis depends on extensions or statistics views; missing records do not prove an absence of slow queries. `workload` prefers `sys_kwr`. Without it, the fallback uses rolling metrics from the last 15 minutes, not an arbitrary requested interval. When snapshots are insufficient, it may create an additional snapshot on a writable primary; `--no-snapshot` disables that behavior.
-
-## Locks and sessions {#locks}
-
-**Who is waiting, who may be blocking them, and what SQL is involved?**
+**Who is connected, who is sitting idle in transaction, and what is one session doing?**
 
 ```bash
 ~/kbdiag sessions
-~/kbdiag locks wait
-~/kbdiag locks hold
+~/kbdiag sessions --active
+~/kbdiag session <pid>
 ```
 
-Inspect waiting and held locks, then use `sql <pid>` for the relevant session. Use a PID from current output; sessions can end between observations.
+`sessions` lists every session, longest transaction first, and warns about sessions idle in transaction for more than 300 seconds. `session <pid>` shows one session's activity, the locks it holds and whom it blocks or is blocked by.
 
-`kill` is an intervention: it cancels queries by default, while `--terminate` terminates sessions. Verify the session and business impact before use. It is not needed for a first inspection.
+→ [sessions]({{< relref "/docs/reference/sessions" >}}) · [session]({{< relref "/docs/reference/session" >}})
 
-## Space and maintenance {#maintenance}
+## Locks {#locks}
 
-**Where is space used, and what can indexes and statistics tell me?**
+**Who is waiting for a lock, and which session blocks them?**
 
 ```bash
-~/kbdiag space
-~/kbdiag idx
-~/kbdiag advisor index
+~/kbdiag locks
 ```
 
-Use `obj <schema.table>` for object details, `colstat <schema.table>` for column statistics, and `perf bloat` / `perf vacuum` for related checks.
+Each waiting session gets its own finding naming its direct blocker, WARN after 10 seconds. The `verify` line points to the blocker's `session`. When a chain is several sessions long, follow it one hop at a time.
 
-Interpret index usage and estimates with the observation window and workload in mind. `advisor index --fix` emits proposed SQL without executing it; review any suggested DROP or CREATE statements yourself.
+→ [locks]({{< relref "/docs/reference/locks" >}}) · [Scenario: lock waits]({{< relref "/docs/scenarios/lock-waits" >}})
 
-## Diagnosis and incident capture {#diagnosis}
+## Transactions {#txn}
 
-**How do the signals relate, and how can I preserve incident evidence?**
-
-- `diagnose` / `diagnose --full`: correlate signals and produce recommendations.
-- `advisor`: recommendations across indexes, vacuum, parameters and statistics.
-- `snapshot [file]`: package sessions, locks, waits, performance data and some logs.
+**Which transaction has been open too long, and is a prepared (2PC) transaction forgotten?**
 
 ```bash
-~/kbdiag diagnose
-~/kbdiag advisor
-~/kbdiag snapshot incident.tar.gz
+~/kbdiag txn
 ```
 
-Verify diagnoses against the underlying metrics. `snapshot` writes a local archive; it cannot restore a database. The current implementation masks single-quoted literals, not every possible sensitive value. Review the archive before sharing it.
+Open transactions WARN at 300 seconds and FAIL at 1800; prepared transactions FAIL at 900 seconds, with a `ROLLBACK PREPARED` / `COMMIT PREPARED` suggestion printed for you to decide. Prepared transactions live on the primary; on a standby they are reported as not applicable.
+
+→ [txn]({{< relref "/docs/reference/txn" >}})
+
+## Waits {#waits}
+
+**What are sessions waiting on right now?**
+
+```bash
+~/kbdiag waits
+```
+
+Sessions grouped by wait event and state, with their PIDs. It summarizes without thresholds; use `locks` for how long and on whom.
+
+→ [waits]({{< relref "/docs/reference/waits" >}}) · [Scenario: long-running SQL]({{< relref "/docs/scenarios/slow-sql" >}})
+
+## Replication slots {#slots}
+
+**Is a slot keeping WAL for a standby that is gone?**
+
+```bash
+~/kbdiag slots
+```
+
+An inactive slot keeps WAL and, with an `xmin`, holds back vacuum, so it is a FAIL at once. The `verify` line sends you to the standby to check whether it is alive. kbdiag never drops a slot.
+
+→ [slots]({{< relref "/docs/reference/slots" >}})
 
 ## Script integration {#automation}
 
-Most commands support `--format json`; `watch` does not. Judgment commands such as `check` return health verdicts directly. Most data-query commands do not return nonzero merely because of findings unless you use `--exit-code`. Usage and execution errors can still return nonzero.
+Every command sets its exit code from the verdict and supports `--json`:
 
 ```bash
-~/kbdiag --format json check
+~/kbdiag --json locks
+echo $?   # 0 OK, 1 WARN, 2 FAIL, 3 UNKNOWN, 64 usage error, 69 cannot connect
 ```
 
-Verify the behavior of the command you integrate. See [exit codes](../get-started/#exit-codes).
+UNKNOWN means something could not be collected or seen, so kbdiag will not claim OK. 69 only means the connection failed; a database that accepts the connection but cannot answer is UNKNOWN. See [exit codes](../get-started/#exit-codes).
 
-[Troubleshooting: slow SQL and lock waits]({{< relref "/docs/scenarios" >}})
+## Not in this version {#not-yet}
+
+Replication lag, repmgr cluster checks, slow-SQL history, vacuum and bloat, deadlock history and correlated diagnosis are not in kbdiag 2.0 yet. The frozen shell toolkit [`v1.0.0`](https://github.com/Kevin-wenyu/kbdiag/releases/tag/v1.0.0) still has health checks and reports if you need them.

@@ -1,45 +1,44 @@
 ---
 title: "About kbdiag"
-description: "Command-line health checks, investigations and diagnostics for KingbaseES."
+description: "Read-only command-line diagnostics for KingbaseES: a verdict, the evidence and the next step."
 weight: 10
 ---
 
 ## What problem does it solve? {#purpose}
 
-Database investigations often involve querying system views, inspecting the host and connecting scattered observations. kbdiag packages common checks into commands so you can establish the state of an instance and investigate a specific problem.
+When something feels wrong with a database, the first questions are usually the same: who is connected, who is waiting for a lock and who blocks them, which transaction has been open too long, whether a standby's slot is piling up WAL. Answering them means remembering system views and joining them by hand.
 
-It runs on the database host, queries the instance and prints results. Use it for routine inspections, incident investigation and script integration.
+kbdiag packages those questions into commands. Each command runs one read-only look at a live instance and prints a verdict, the evidence it is based on, and the next command to run.
 
 ## Who is it for? {#audience}
 
 | Reader | Start with | What you get |
 |---|---|---|
-| Operations | `status`, `check`, `report` | Instance facts, health findings and a handover report |
-| DBAs | `perf`, `locks`, `stmt`, `idx` | Evidence about sessions, SQL and objects |
-| Incident responders | `diagnose`, `snapshot` | Diagnostic recommendations and captured incident state |
+| Operations | `status`, `sessions` | Instance facts, connection pressure, sessions left idle in transaction |
+| DBAs | `locks`, `session <pid>`, `txn` | Who blocks whom, what a session holds, old and prepared transactions |
+| Monitoring scripts | any command, `--json` | A verdict in the exit code and a stable JSON report |
 
-## How do the three layers work? {#layers}
+## Look, query, diagnose {#layers}
 
-1. **Inspect:** use `check` to find signals worth investigating.
-2. **Investigate:** use a focused command, such as `locks wait` when lock waits appear.
-3. **Diagnose:** use `diagnose` to review correlated signals, then verify with specific commands.
-
-Each layer also works independently. Interpret recommendations with your workload, collection time and database environment in mind; they do not cover every possible failure.
+1. **Look:** one command gives one fact, such as the instance's role or its connection usage (`status`).
+2. **Query:** a focused command looks at one dimension in depth, such as lock waits (`locks`) or one session (`session <pid>`).
+3. **Diagnose:** correlating several dimensions into a root cause is planned for later versions. This version does look and query; each finding's `verify` line tells you which query to run next.
 
 ## Runtime and requirements {#requirements}
 
-- The documented target is **KingbaseES V8R6+**; available evidence depends on version, privileges and extensions.
-- Run the distributed `dist/kbdiag` file on the database host as the `kingbase` OS user.
-- It uses the database's `ksql` client and host utilities. No separate kbdiag service is needed.
-- Standalone and repmgr HA environments are supported. Without repmgr, relevant cluster features skip or report unavailable information according to their implementation.
-- Query commands and judgment commands have different exit behavior. Read [exit codes](../get-started/#exit-codes) before integrating them into scripts.
+- KingbaseES V8R6 (tested on V008R006C009B0014), standalone or repmgr primary/standby.
+- One static Linux binary (amd64 or arm64). It speaks the wire protocol itself: no `ksql`, no runtime, no service.
+- Run it on the database host as the `kingbase` OS user over the local socket for the full picture. Other accounts and TCP work too; what they cannot see is reported, not hidden.
+- repmgr is optional.
 
 ## Operating boundaries {#boundaries}
 
-`advisor --fix` generates proposed SQL. `kill` can cancel queries or terminate sessions. `workload` may supplement snapshots under specific conditions. `snapshot` captures incident state and cannot restore a database.
+- **Read-only.** Every connection is a read-only transaction with a `lock_timeout`. Suggested fixes, such as `ROLLBACK PREPARED`, are printed for you to review and never run.
+- **No pretend OK.** When something the verdict depends on could not be collected or seen, and nothing visible is WARN or FAIL, the verdict is UNKNOWN (exit 3), not OK.
+- **One look, not monitoring.** Each run is a single sample. A clean result says nothing about a moment ago or a moment later.
 
-Do not treat the whole toolkit as read-only or as an automatic repair system. See [capabilities](../features/) for individual boundaries and dependencies.
+kbdiag 2.0 is a Go rewrite. The shell toolkit (`v1.x`) is frozen; its other commands (health check, reports, performance and advisors) are available in release [`v1.0.0`](https://github.com/Kevin-wenyu/kbdiag/releases/tag/v1.0.0).
 
 ## Next {#next}
 
-[Run your first inspection](../get-started/) · [Explore capabilities](../features/) · [View source](https://github.com/Kevin-wenyu/kbdiag)
+[Run your first check](../get-started/) · [Explore capabilities](../features/) · [View source](https://github.com/Kevin-wenyu/kbdiag)

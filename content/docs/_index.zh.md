@@ -1,6 +1,6 @@
 ---
 title: "文档"
-description: "从认识 kbdiag、首次巡检到按问题查阅命令。"
+description: "从认识 kbdiag、第一次检查到按问题查阅命令。"
 weight: 10
 type: docs
 menus:
@@ -13,11 +13,11 @@ cascade:
 
 ## 从这里开始
 
-- [认识 kbdiag](about/)：适合谁、如何运行、看 / 查 / 断怎样配合。
-- [功能概览](features/)：按问题了解六类能力与操作边界。
-- [首次巡检](get-started/)：安装、连接、执行检查并理解退出码。
-- [使用手册](reference/)：查阅完整命令、参数与环境变量。
+- [认识 kbdiag](about/)：适合谁、在哪运行、不做什么。
+- [功能概览](features/)：每条命令回答什么问题。
+- [第一次检查](get-started/)：编译、安装、连接，理解退出码。
+- [使用手册](reference/)：全部命令、参数和输出字段。
 
-第一次使用，先完成一次 `status` 和 `check`。已经遇到具体问题，可以从功能概览选命令，再到手册查参数。
+第一次使用，先跑 `status` 和 `sessions`。已经遇到具体问题，可以从功能概览选命令，或者按排查场景一步步走。
 
-[按场景排查：慢 SQL 与锁等待]({{< relref "/docs/scenarios" >}})
+[按场景排查：锁等待与长时间运行的 SQL]({{< relref "/docs/scenarios" >}})

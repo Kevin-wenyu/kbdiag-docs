@@ -1,6 +1,6 @@
 ---
 title: "Documentation"
-description: "Understand kbdiag, run your first inspection, and look up commands by problem."
+description: "Understand kbdiag, run your first check, and look up commands by problem."
 weight: 10
 type: docs
 menus:
@@ -13,11 +13,11 @@ cascade:
 
 ## Start here
 
-- [About kbdiag](about/): who it serves, where it runs, and how its three layers work.
-- [Capabilities](features/): six groups of features and their operating boundaries.
-- [First inspection](get-started/): install, connect, check, and interpret exit codes.
-- [User manual](reference/): the full command, flag and environment reference.
+- [About kbdiag](about/): who it serves, where it runs, and what it will not do.
+- [Capabilities](features/): the question each command answers.
+- [First check](get-started/): build, install, connect, and read exit codes.
+- [User manual](reference/): every command, flag and output field.
 
-Start with `status` and `check`. If you have a specific problem, choose a command from the capabilities page and look up its options in the manual.
+Start with `status` and `sessions`. If you already have a problem in front of you, pick a command from the capabilities page or follow a troubleshooting scenario.
 
-[Troubleshooting: slow SQL and lock waits]({{< relref "/docs/scenarios" >}})
+[Troubleshooting: lock waits and long-running SQL]({{< relref "/docs/scenarios" >}})

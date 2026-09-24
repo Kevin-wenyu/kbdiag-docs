@@ -1,60 +1,89 @@
 ---
 title: "排查锁等待"
-description: "核对等待关系，确认事务，再验证恢复。"
+description: "找到谁在等，顺着 verify 行找到挡路者，做决定，再确认等待消失。"
 weight: 20
 ---
 
-采集于 2026-09-16（UTC+08），本地 KingbaseES V008R006C009B0014 主节点，数据库 `test`。工具源码提交 `3bea0be`，使用仓库中的 `dist/kbdiag`。这是测试环境实测，不代表生产环境验收。文中 PID、计数与时间只属于本次采样。
+采集于 2026-09-24（UTC+08），本地 KingbaseES V008R006C009B0014 主节点，数据库 `test`。工具是 Go 版源码提交 `6803c61` 编译的 `~/kbdiag`（linux/amd64 静态二进制）。这是测试环境实测，不代表生产环境验收。PID、计数和时间只属于本次采样。 故障注入脚本开了一个事务，对测试表加 `ACCESS EXCLUSIVE` 锁后停着不动；另一个会话去读这张表。
 
-## 1. 查看等待关系
+## 1. 谁在等？
 
 ```bash
-~/kbdiag locks wait -v --no-color --exit-code
+~/kbdiag locks
+echo EXIT_CODE=$?
 ```
-
-先保存退出码及输出，再用 `~/kbdiag sql <WAIT_PID>`、`~/kbdiag sql <BLOCK_PID>` 查看当前会话详情。PID 可能消失或被复用，操作前应重新确认用户、应用和 SQL。
-
-## 2. 真实测试输出
-
-本次在专用表上构造两个事务更新同一行：持锁方暂停 28 秒后回滚；等待方设置 35 秒语句超时，完成后也回滚。它模拟单一行更新阻塞，不是死锁实验。以下 SQL 列是工具原样截断输出。
 
 ```text
-==> Waiting locks
-[WARN]  Waiting locks: 1 blocked session(s) (longest 6s, showing top 10)
-[OK]    Long lock waits: none > 60s
+locks  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T10:20:02+08:00)
 
-WAIT_PID  WAIT_USER  BLOCK_PID  BLOCK_USER  LOCKTYPE       MODE       WAIT     WAIT_QUERY                                                                                            BLOCK_QUERY
-81518     system     81440      system      transactionid  ShareLock  0:00:06  SET application_name='kbdiag_docs_waiter'; SET statement_timeout='35000'; BEGIN; UPDATE kbdiag_docs_  SET application_name='kbdiag_docs_holder'; BEGIN; UPDATE kbdiag_docs_20260916.lock_demo SET value=1 
+[WARN] lock.waiting  会话 435317 等 public.kbdiag_inj_lock 的 AccessShareLock 已 14 秒，被 435308 挡住
+  verify: kbdiag session 435308  # 看挡路的会话在干什么
 
-PROCESS_EXIT=1
+lock.list: 2 rows
+pid     locktype  relation                mode                 granted  wait_s  blocked_by
+435308  relation  public.kbdiag_inj_lock  AccessExclusiveLock  true     -       []
+435317  relation  public.kbdiag_inj_lock  AccessShareLock      false    13.7    [435308]
+EXIT_CODE=1
 ```
-独立系统视图证据：
+
+- 会话 435317 等 `public.kbdiag_inj_lock` 的 `AccessShareLock` 已经 14 秒，直接挡路者是 435308。等超过 10 秒报 WARN（用 `--lock-wait-warn` 调整）。
+- `lock.list` 两边都列出来了：435308 持有 `AccessExclusiveLock`（`granted true`），435317 没拿到锁，`blocked_by` 写着 435308。
+- `wait_s` 从等待者最后一次状态变化算起，可能略微多报，不会少报。
+
+## 2. 挡路者在干什么？
+
+照 `verify` 行跑：
+
+```bash
+~/kbdiag session 435308
+echo EXIT_CODE=$?
+```
 
 ```text
-pid|application_name|state|wait_event_type|wait_event
-81440|kbdiag_docs_holder|active|Timeout|PgSleep
-81518|kbdiag_docs_waiter|active|Lock|transactionid
-(2 rows)
-pid|locktype|mode|granted
-81518|transactionid|ShareLock|f
-(1 row)
+session  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T10:20:02+08:00)
 
-PROCESS_EXIT=0
+[WARN] lock.waiting  会话 435317 等 public.kbdiag_inj_lock 的 AccessShareLock 已 14 秒，被 435308 挡住
+  verify: kbdiag session 435308  # 看挡路的会话在干什么
+
+lock.list: 4 rows
+pid     locktype       relation                mode                 granted  wait_s  blocked_by
+435308  relation       public.kbdiag_inj_lock  AccessExclusiveLock  true     -       []
+435308  transactionid  -                       ExclusiveLock        true     -       []
+435308  virtualxid     -                       ExclusiveLock        true     -       []
+435317  relation       public.kbdiag_inj_lock  AccessShareLock      false    14.3    [435308]
+
+session.activity: 1 rows
+pid     usename  datname  application_name        client_addr  backend_type    state                backend_xid  backend_xmin  xact_age_s  query_age_s  state_age_s  wait_event_type  wait_event  query
+435308  system   test     kbdiag_inj_lock_holder  -            client backend  idle in transaction  6099         -             14.3        14.3         14.3         Client           ClientRead  lock table kbdiag_inj_lock in access exclusive mode;
+EXIT_CODE=1
 ```
 
-## 3. 怎样判断
+- 挡路者是 `idle in transaction`：最后一条语句是 `lock table kbdiag_inj_lock in access exclusive mode;`，已经在等客户端（`Client / ClientRead`）14 秒，事务还开着。它什么都没在跑，锁一直占着只是因为没人提交或回滚。
+- 会话报告里重复出现了那条锁等待 finding，因为被它挡住的会话也属于这个会话的全貌。
+- 如果挡路者自己也在等（它的 `blocked_by` 不为空），就对它的挡路者再跑 `session`，直到找到一个没在等的。kbdiag 一次只显示一跳。
+- 如果 `blocked_by` 显示 `[0]`，挡路的是一个没有会话的两阶段事务；到主库跑 `kbdiag txn` 找它。
 
-- `WAIT_PID=81518` 正在等待，`BLOCK_PID=81440` 持有相关锁；仅在本次受控场景中核实这对关系。
-- `transactionid / ShareLock` 表示等待相关事务结束，并不是“整张表被 ShareLock 锁住”。
-- `WAIT` 来自查询开始至采样时的时长，不是精确的锁等待计时。
-- 存在等待就会 WARN；没有超过默认 60 秒的长等待仍可显示 OK。两行并不矛盾。
-- 输出中的计数来自锁关联结果，复杂场景可能一会话对应多行；不要直接当作受影响用户数。
-- 本例开启 `--exit-code`，返回 1。`PROCESS_EXIT` 是采集脚本附加的标记。
+## 3. 决定并处理
 
-## 4. 处置与复核
+kbdiag 不会结束会话。先和应用负责人确认这个事务是干什么的。通常应该由应用提交或回滚；应用做不到时，再自己断开连接，比如在 `ksql` 里执行 `select pg_terminate_backend(435308);`，执行前确认这个 PID 仍然属于同一个用户和应用。断开挡路者会回滚它的事务。
 
-先联系事务所属业务，确认它是否应继续、提交或回滚。不要看到 PID 就终止会话。`kbdiag kill <PID>` 默认取消当前语句，`--terminate` 才结束连接；取消语句不保证事务已结束、全部锁已释放，尤其不能假定 idle in transaction 会因此消失。
+这次测试里，注入脚本释放了持锁会话，事务随之结束。
 
-本实验通过持锁事务主动回滚释放锁。两个测试事务退出后，核对原行仍为 `id=1, value=0`，删除专用表和 schema，并确认测试会话与 schema 计数均为 0。
+## 4. 确认
 
-真实处置后重新运行 `locks wait`，同时核对应用请求恢复及事务状态。当前等待清空与累计死锁统计是不同问题；本实验没有产生或重置死锁统计。
+```bash
+~/kbdiag locks
+echo EXIT_CODE=$?
+```
+
+```text
+locks  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T10:20:04+08:00)
+
+lock.list: 0 rows
+pid  locktype  relation  mode  granted  wait_s  blocked_by
+EXIT_CODE=0
+```
+
+没有等待，OK，退出码 0。一次干净的采样只说明现在没有等待；如果反复出现，要去找应用里把事务开着不关的那段逻辑。
+
+[回到排查场景]({{< relref "/docs/scenarios" >}}) · [locks 手册]({{< relref "/docs/reference/locks" >}})

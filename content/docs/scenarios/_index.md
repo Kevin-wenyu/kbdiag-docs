@@ -1,13 +1,11 @@
 ---
 title: "Troubleshooting scenarios"
-description: "Move from symptoms to evidence and verify the outcome."
+description: "Move from a symptom to the evidence, then confirm the outcome."
 weight: 40
 ---
 
-Confirm the target instance before choosing a workflow. Examples use isolated lab sessions; reproducing the workload in production is unnecessary.
+Confirm you are on the right instance before following a scenario. The examples come from fault-injection scripts on a lab cluster; you do not need to reproduce them in production.
 
-- [Running slow SQL](slow-sql/): find a PID and distinguish deliberate waits from execution issues.
-- [Lock waits](lock-waits/): verify waiting and blocking sessions before handling transactions.
-- [Real health check]({{< relref "/docs/get-started/reading-results" >}}): understand warnings and exit codes.
-
-- [Replication lag]({{< relref "/docs/scenarios/replication-lag" >}})
+- [Long-running SQL](slow-sql/): find a statement that has been running for a while and what it waits on.
+- [Lock waits](lock-waits/): find who waits, follow the verify line to the blocker, and confirm the waits are gone.
+- [Read a real result]({{< relref "/docs/get-started/reading-results" >}}): a WARN in text and JSON, line by line.

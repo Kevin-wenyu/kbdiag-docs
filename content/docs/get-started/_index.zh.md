@@ -1,111 +1,97 @@
 ---
-title: "第一次巡检"
-description: "完成安装、连接配置、健康检查和结果解释。"
+title: "第一次检查"
+description: "编译二进制、装到数据库主机、连接实例，读懂结论和退出码。"
 weight: 30
 ---
 
-本页带你完成 `status` 和 `check`，再决定是否需要深查。命令在 **KingbaseES 主机**执行，网站构建环境不需要安装数据库。
+编译一次 kbdiag，拷到 **KingbaseES 主机**上，跑 `status` 和 `sessions`，再决定哪里需要细看。
 
-## 1. 准备环境 {#requirements}
+## 1. 准备 {#requirements}
 
-- KingbaseES V8R6+ 实例处于运行状态。
-- 可以切换到 `kingbase` 系统用户，并使用数据库自带的 `ksql`。
-- 已确认数据库端口、数据库名和数据库账号；账号需要具备所查系统视图的访问权限。
-- repmgr 仅用于相关集群能力，单机巡检不要求安装它。
+- 一个运行中的 KingbaseES V8R6 实例（在 V008R006C009B0014 上测试）。
+- 数据库主机上 `kingbase` OS 用户的权限。
+- 一台装了 Go（版本见仓库的 `go.mod`）和 git 的机器，用来编译。可以就是你的笔记本；数据库主机上除了这个二进制什么都不用装。
 
-## 2. 安装工具 {#install}
+## 2. 编译和安装 {#install}
 
-先切换系统用户：
+在编译机上：
 
 ```bash
-sudo -i -u kingbase
+git clone https://github.com/Kevin-wenyu/kbdiag.git
+cd kbdiag
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(git describe --tags --match 'v2*' --always)" -o kbdiag ./cmd/kbdiag
+scp kbdiag kingbase@db-host:~/kbdiag
 ```
 
-再下载单文件：
+ARM 主机用 `GOARCH=arm64`。产物是一个没有运行时依赖的静态文件，离线主机只要把这个文件拷过去。
+
+在数据库主机上：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Kevin-wenyu/kbdiag/main/dist/kbdiag \
-  -o ~/kbdiag
+sudo -iu kingbase
 chmod +x ~/kbdiag
 ~/kbdiag --version
 ```
 
-若主机不能访问 GitHub，可在可联网机器下载仓库中的 `dist/kbdiag`，拷贝为数据库主机的 `~/kbdiag`，再赋予执行权限。已有同名文件时，下载会覆盖它；更新前可先备份。
+## 3. 连接 {#connection}
 
-## 3. 确认目标实例 {#connection}
+默认走本地 socket `/tmp/.s.KINGBASE.54321`，以 `system` 用户连 `test` 库，和 `ksql test system` 一样。用参数换目标：
 
-默认端口是 `54321`，数据库是 `test`，数据库用户是 `system`。自动探测目录并不意味着自动识别所有连接参数。先运行：
+| 参数 | 默认值 |
+|---|---|
+| `--host` | `/tmp`（socket 目录）；写主机名或 IP 走 TCP |
+| `-p, --port` | `54321` |
+| `-d, --dbname` | `test` |
+| `-U, --user` | `system` |
+| `--timeout` | 每条查询 `10s` |
+
+密码从 `PGPASSWORD` 或 `~/.pgpass` 取。连不上时 kbdiag 打印错误并以 69 退出；先查端口、socket 目录和 `sys_hba.conf`。
+
+没有监控角色的账号看不到别人会话的状态、时间和 SQL。kbdiag 把这些字段列进 `redacted`，结论给 UNKNOWN 而不是 OK；授予 `sys_monitor` 或者用 `system` 才能看全。
+
+## 4. 跑第一次检查 {#run-check}
 
 ```bash
-~/kbdiag instances
 ~/kbdiag status
+echo "exit code: $?"
+~/kbdiag sessions
+echo "exit code: $?"
 ```
 
-同机多实例时，先依据 `instances` 的输出确定目标端口及路径。需要自定义时，编辑 `~/.kbdiagrc`，将下面示例值改成实际值：
+`$?` 要紧跟在命令后面读，下一条命令会覆盖它。`status` 告诉你这是个什么实例、连接快满了没有；`sessions` 列出所有连着的会话，并对停在 idle in transaction 的会话报警。
 
-```bash
-KB_PORT=54321
-KB_DB=test
-KB_SUPERUSER=system
-KB_BIN_DIR=/实际安装目录/bin
-KB_DATA_DIR=/实际数据目录
-```
+## 5. 读懂结论和退出码 {#exit-codes}
 
-保存后重试 `~/kbdiag status`。若已有 `.kbdiagrc`，修改对应条目即可。该文件会作为 Shell 配置加载。
+每份报告第一行就是结论，退出码说的是同一件事：
 
-**连接失败时先处理连接问题：** 检查进程、端口、账号认证、目录和权限，不要把无法读取数据解释成正常。`check` 的数据库连通性检查失败会返回 `2`。
-
-## 4. 执行健康检查 {#run-check}
-
-```bash
-~/kbdiag check
-check_rc=$?
-printf 'check exit code: %s\n' "$check_rc"
-```
-
-应紧接命令保存 `$?`，否则后续命令会覆盖它。按需查看更多信息：
-
-```bash
-~/kbdiag check -v
-~/kbdiag check --os
-```
-
-`-v` 展开部分底层数据；`--os` 添加操作系统符合性检查。检查结果反映当次采样与当前阈值，不能代表所有时间的状态。
-
-## 5. 解释退出码 {#exit-codes}
-
-| `check` 退出码 | 意义 | 下一步 |
+| 退出码 | 结论 | 下一步 |
 |---|---|---|
-| `0` | 本次检查未触发 WARN / FAIL | 保留结果；业务仍异常时继续检查相关维度 |
-| `1` | 存在告警 | 查看告警项目，结合业务与阈值判断 |
-| `2` | 存在 FAIL 或数据库连通性失败 | 先确认失败项目与连接状态，再继续处理 |
+| `0` | OK | 这次采样里没有越过阈值的 |
+| `1` | WARN | 逐条看 finding，跑它的 `verify` 命令 |
+| `2` | FAIL | 同上，而且要更快：已经坏了或马上要坏 |
+| `3` | UNKNOWN | 有东西没采到或看不到；查权限和 `redacted` 列表 |
+| `64` | 参数错误 | 检查命令和参数 |
+| `69` | 连不上 | 先解决连接；这次什么都没看 |
 
-这张表针对 `check`。不要套用到所有命令；多数查数据命令需要 `--exit-code` 才按检查发现返回健康判定，参数或运行错误也可能返回非零值。
+WARN 或 FAIL 的 finding 优先于 UNKNOWN：在看得到的范围里发现了问题，就直接报出来。
 
-[看一段标注为示意的结果解读](reading-results/)
+[逐行读一个真实结果](reading-results/)
 
-## 6. 根据发现继续检查 {#next-check}
+## 6. 顺着证据往下查 {#next-check}
 
-| 当前发现 | 下一条命令 | 关注什么 |
+| 看到 | 下一条命令 | 看什么 |
 |---|---|---|
-| 有锁等待 | `~/kbdiag locks wait` | 等待与阻塞信息 |
-| 当前有慢查询 | `~/kbdiag perf slow` | 会话、耗时和 SQL |
-| 复制相关告警 | `~/kbdiag replication` | 当前节点角色与复制状态 |
-| 空间相关告警 | `~/kbdiag space` | 磁盘和数据库对象占用 |
-| 多项异常需要关联 | `~/kbdiag diagnose` | 诊断证据、建议与复核路径 |
+| 锁等待 | `~/kbdiag session <挡路者 pid>` | 挡路者在干什么、事务开了多久 |
+| idle in transaction | `~/kbdiag session <pid>` | 它持有哪些锁、有没有挡住别人 |
+| 老事务或两阶段事务 | `~/kbdiag txn` | 事务时长，两阶段事务的 gid 和 owner |
+| 很多会话在等 | `~/kbdiag waits` | 它们等的是不是同一个事件 |
+| 连接快满 | `~/kbdiag sessions --limit 0` | 按用户、应用名、客户端地址看有没有扎堆 |
+| 未激活的槽 | 在备库上跑 `~/kbdiag sessions` | 备库是否在线、有没有 `walreceiver` |
 
-若要生成交接文件，可选择一个新文件名：
-
-```bash
-~/kbdiag report inspection.md
-```
-
-报告写入当前目录。查看报告中的 WARN / FAIL 与明细；报告命令本身也可能因发现问题返回非零值。
+每条 finding 的 `verify` 行已经给出了对应的那一条。
 
 ## 完成标准 {#done}
 
-你已经确认目标实例、能够运行 `status` 和 `check`、理解检查退出码，并能根据一条发现找到下一条命令。
+你已经编译并装好 kbdiag，连上了正确的实例，跑过 `status` 和 `sessions`，也知道它们的退出码是什么意思。
 
-[了解全部功能](../features/) · [查阅命令参数](../reference/)
-
-- [巡检报告样例]({{< relref "/docs/get-started/report-example" >}})
+[功能概览](../features/) · [查阅命令参数](../reference/)
