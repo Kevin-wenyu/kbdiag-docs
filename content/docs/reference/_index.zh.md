@@ -8,168 +8,95 @@ cascade:
 
 内容来自 [kbdiag README](https://github.com/Kevin-wenyu/kbdiag#readme)，是生成时的快照。
 
-KingbaseES 命令行 DBA 工具集。非交互式——直接对运行实例查询，输出状态、拓扑、复制延迟、性能瓶颈、索引健康、列统计和优化建议。支持单机和主备集群（repmgr）。
+命令页：[`status`]({{< relref "/docs/reference/status" >}}) · [`sessions`]({{< relref "/docs/reference/sessions" >}}) · [`session`]({{< relref "/docs/reference/session" >}}) · [`locks`]({{< relref "/docs/reference/locks" >}}) · [`txn`]({{< relref "/docs/reference/txn" >}}) · [`waits`]({{< relref "/docs/reference/waits" >}}) · [`slots`]({{< relref "/docs/reference/slots" >}})
+
+KingbaseES 命令行诊断工具。单个静态二进制，直连线协议：不调 `ksql`，不进交互界面。每条命令对运行中的实例做一次只读查询，输出结论、证据和下一步该跑的命令。支持单机和 repmgr 主备集群。
+
+这是用 Go 重写的 kbdiag 2.0，首个发布版本是 `v2.0.0-alpha.1`。shell 版（`v1.x`）已冻结，需要时用 [`v1.0.0`](https://github.com/Kevin-wenyu/kbdiag/releases/tag/v1.0.0)。
 
 ## 安装
 
-单文件，无依赖：
+编译 Linux 静态二进制（Go 版本见 `go.mod`），拷到数据库主机：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Kevin-wenyu/kbdiag/main/dist/kbdiag \
-  -o ~/kbdiag && chmod +x ~/kbdiag
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(git describe --tags --match 'v2*' --always)" -o kbdiag ./cmd/kbdiag
+scp kbdiag kingbase@db-host:~/kbdiag
 ```
 
-## 更新
-
-```bash
-~/kbdiag update
-```
-
-## 团队批量部署
-
-一次推送到多台主机：
-
-```bash
-# 创建主机列表文件（每行 user@host）
-cp scripts/hosts.example my-hosts.txt
-vim my-hosts.txt
-
-# 批量部署
-bash scripts/deploy.sh my-hosts.txt
-
-# 自定义 SSH 端口或目标路径
-SSH_PORT=2222 bash scripts/deploy.sh my-hosts.txt
-```
+ARM 主机用 `GOARCH=arm64`。二进制没有运行时依赖。
 
 ## 快速开始
 
 ```bash
-# 先切换到 kingbase 系统用户
-sudo -i -u kingbase
-
-# 全量扫描（每日巡检）
-~/kbdiag all
-
-# 健康状态门控（适合监控脚本）
-~/kbdiag check
-echo $?   # 0=全部正常  1=告警  2=故障
-
-# DBA 详细模式
-~/kbdiag check -v
-~/kbdiag perf slow -v
+sudo -iu kingbase        # 以数据库 OS 用户运行
+~/kbdiag status          # 这是个什么实例
+~/kbdiag sessions        # 谁连着，谁 idle in transaction
+~/kbdiag locks           # 谁在等锁，被谁挡住
+echo $?                  # 0 OK，1 WARN，2 FAIL，3 UNKNOWN
 ```
 
-kbdiag 会从当前运行的 `kingbase` 进程自动探测安装/数据目录，多数情况下零配置即可用。如果你的安装路径比较特殊，`all`/`status` 仍然找不到实例，需要手动设置 `KB_BIN_DIR`/`KB_DATA_DIR`，见下方「环境变量」小节。
+## 命令
 
-## 全局参数
+| 命令 | 看什么 | 参数 |
+|---|---|---|
+| `status` | 版本、角色、运行时长、连接数、各库大小、下游数量；连接快满时 WARN/FAIL | `--conn-warn 百分比`、`--conn-fail 百分比` |
+| `sessions` | 全部会话；idle in transaction 过久报 WARN | `--active`、`--limit N`、`--idle-in-txn-warn 秒` |
+| `session <pid>` | 一个会话：活动、持有的锁、挡住谁或被谁挡住 | `--lock-wait-warn 秒`、`--idle-in-txn-warn 秒` |
+| `locks` | 锁等待和直接挡路者；等太久报 WARN | `--limit N`、`--lock-wait-warn 秒` |
+| `txn` | 开着的事务和两阶段事务；过久报 WARN/FAIL | `--limit N`、`--xact-warn 秒`、`--xact-fail 秒`、`--prepared-fail 秒` |
+| `waits` | 按等待事件和状态汇总会话 | |
+| `slots` | 复制槽；未激活报 FAIL | |
 
-```
-kbdiag [全局参数] <命令> [子命令] [命令参数]
+默认阈值：连接数到普通用户可用上限（`max_connections` 减去 `superuser_reserved_connections`）的 80% WARN、100% FAIL，idle in transaction 300 秒，等锁 10 秒，事务 300 秒 WARN、1800 秒 FAIL，两阶段事务 900 秒 FAIL。`--limit` 只影响显示，判定始终覆盖全部行。
 
-  -v, --verbose       显示底层完整数据
-  -q, --quiet         仅显示 WARN/FAIL（屏蔽 OK/INFO）
-  -n N, --top N       限制结果行数（默认：10）
-  --format text|json  输出格式（默认：text）。除 watch 外所有命令都支持 JSON
-  --exit-code         查数据类命令（DBA 层 + 多数 OPS 层）默认无论结果如何
-                      都返回 exit 0；加这个 flag 后改成按最差判定返回退出码
-                      （0=OK / 1=WARN / 2=FAIL），适合监控脚本调用。判定型
-                      命令（check、cluster ready、diagnose、report）本来
-                      就无条件反映判定，不受这个 flag 影响
-  --no-color          关闭 ANSI 颜色
-  --timeout N         数据库查询超时秒数（默认：10）
-```
+## 连接
 
-## 命令速查
+| 参数 | 默认值 |
+|---|---|
+| `--host` | `/tmp`（本地 socket `/tmp/.s.KINGBASE.54321`）；写主机名或 IP 走 TCP |
+| `-p, --port` | `54321` |
+| `-d, --dbname` | `test` |
+| `-U, --user` | `system` |
+| `--timeout` | 每条查询 `10s` |
+| `--json` | 输出 JSON |
 
-### [看] 运维命令（无需 DBA 背景）
+密码从 `PGPASSWORD` 或 `~/.pgpass` 取。连接是只读事务并设了 `lock_timeout`，kbdiag 不改任何东西；建议的处理语句（如 `ROLLBACK PREPARED`）只打印，不执行。
 
-| 命令 | 说明 |
-|------|------|
-| `status` | 进程状态、连接性、角色、运行时长 |
-| `instances` | 列出本机所有 kingbase 进程（PID、端口、数据目录、bin 目录、OS 用户）——同机多实例时用它定位目标实例 |
-| `license` | 授权有效期、类型（试用/正式）、序列号 |
-| `cluster [ready]` | Repmgr 集群拓扑；`ready` = failover 就绪检查清单（拓扑、repmgrd、仲裁、复制槽、standby 可提升性、VIP），exit 0/1/2 |
-| `replication` | 复制延迟 / 备节点连接数 |
-| `check [--os]` | 15 项健康阈值检查，exit 0=正常 / 1=告警 / 2=故障；`--os` 增加 OS 符合性检查（THP、swappiness、swap、overcommit、ulimit、NTP、数据目录文件系统、CPU 调频）|
-| `space [frag]` | 磁盘、表大小、WAL、归档；`frag` 增加碎片分析 |
-| `backup` | 备份与归档可用性：归档器状态、积压 WAL、sys_rman、复制槽 |
-| `report [file]` | 一键巡检报告（Markdown 单文件）：结论先行、WARN/FAIL 汇总表 + 全部检查明细，exit 0/1/2 |
-| `params [pattern]` | 实例参数查询（支持模糊匹配） |
-| `update` | 从 GitHub 更新 kbdiag 到最新版本 |
+## 输出
 
-### [查] DBA 精准深查命令
+```text
+locks  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:38:53+08:00)
 
-| 命令 | 说明 |
-|------|------|
-| `sessions` | 非空闲会话列表 |
-| `locks [hold\|wait\|deadlock]` | 锁分析：持有者 / 等待者 / 死锁检测 |
-| `perf [slow\|bloat\|vacuum\|index\|wait\|io\|wal\|top]` | 慢查询 / 表膨胀 / 垃圾回收 / 索引 / 等待事件 / IO / WAL / Top SQL |
-| `sql [pid\|all]` | 会话 SQL 全文 + EXPLAIN 计划 |
-| `stmt [queryid]` | SQL 历史统计 AWR 报告（均值/总耗时/IO/调用频率 Top N）；指定 queryid 下钻 |
-| `workload [--from <dur>] [--to <dur>] [--no-snapshot]` | 区间负载对比报告（sys_kwr AWR 风格，未安装时回退 sys_stat_sysmetric_history） |
-| `explain <queryid\|"SQL">` | 执行计划分析：EXPLAIN + 红旗提示（顺序扫描、嵌套循环、排序） |
-| `wait` | 等待事件分布 |
-| `progress` | 长时间操作进度（VACUUM、CREATE INDEX 等） |
-| `jobs` | 定时任务健康（kdb_schedule:损坏作业、失败运行） |
-| `partition` | 分区表健康：缺失 DEFAULT 分区、数据倾斜、空分区 |
-| `stat` | 吞吐量指标（TPS、Buffer 命中率，差值采样） |
-| `obj <schema.table>` | 对象深查：大小、索引、约束 |
-| `colstat <schema.table> [--col <col>]` | 列统计深查（n_distinct、MCV、相关性） |
-| `temp` | 临时文件与排序溢出分析 |
-| `conf [diff]` | 配置审计；`diff` 比对节点差异 |
-| `audit` | 安全与合规检查（角色、hba 连接白名单、KingbaseES 安全扩展） |
-| `logs` | 日志文件分析（慢查询、报错） |
-| `snapshot [file]` | 故障现场一键打包（会话/锁/等待/性能/日志尾部）为脱敏 tar.gz，供事后分析或提交原厂——不是备份 |
-| `kill [--terminate] [pid\|--long N\|--idle-txn N] [--dry-run] [--force]` | 取消或终止查询 / 会话 |
-| `idx [unused\|dup\|bloat\|missing]` | 索引健康分析 |
+[WARN] lock.waiting  会话 364818 等 public.kbdiag_inj_lock 的 AccessShareLock 已 14 秒，被 364809 挡住
+  verify: kbdiag session 364809  # 看挡路的会话在干什么
 
-### [断] 多维根因关联
-
-完整诊断链：症状 → 证据 → 根因 → 建议。每条结论都能追溯到一条查层命令用于验证。
-
-| 命令 | 说明 |
-|------|------|
-| `diagnose [--full]` | 根因诊断报告（快速 <15s；`--full` 完整约 90s） |
-| `advisor [index\|vacuum\|params\|analyze] [--fix]` | 综合 DBA 建议；`--fix` 输出可执行 SQL |
-
-### [其他]
-
-| 命令 | 说明 |
-|------|------|
-| `watch <N> <cmd>` | 每隔 N 秒重复执行任意 kbdiag 命令 |
-| `remote <nodes> <cmd>` | 多节点批量诊断 |
-| `all` | 运行所有检查 |
-
-## 配置文件
-
-每台主机的个性化配置放在 `~/.kbdiagrc`（启动时自动加载，优先于默认值）：
-
-```bash
-# ~/.kbdiagrc 示例
-KB_PORT=5432
-KB_BIN_DIR=/opt/kingbase/bin
-KB_SUPERUSER=dba
-KB_SLOW_THRESHOLD=3
+lock.list: 2 rows
+pid     locktype  relation                mode                 granted  wait_s  blocked_by
+364809  relation  public.kbdiag_inj_lock  AccessExclusiveLock  true     -       []
+364818  relation  public.kbdiag_inj_lock  AccessShareLock      false    13.8    [364809]
 ```
 
-## 环境变量
+- 第一行：命令、结论和上下文（版本、角色、用户@位置、采集时间）。
+- finding：编号、症状、下一步（`verify` 看什么或 `fix` 怎么处理）。
+- 数据：每个探针一张表，`-` 表示空值。`--json` 内容相同，字段名稳定。
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `KB_PORT` | `54321` | 数据库端口 |
-| `KB_BIN_DIR` | `/home/kingbase/cluster/install/kingbase/bin` | 二进制目录（默认路径不存在时会从运行中的进程自动探测） |
-| `KB_DATA_DIR` | `/home/kingbase/cluster/install/kingbase/data` | 数据目录（默认路径不存在时会从运行中的进程自动探测） |
-| `KB_SUPERUSER` | `system` | 超级用户名 |
-| `KB_DB` | `test` | 数据库名 |
-| `KB_WARN_CONN` / `KB_FAIL_CONN` | `70` / `90` | 连接数使用率 % |
-| `KB_WARN_LAG` / `KB_FAIL_LAG` | `30` / `300` | 复制延迟（秒） |
-| `KB_SLOW_THRESHOLD` | `5` | 慢查询阈值（秒） |
-| `KB_WARN_SWAPPINESS` | `10` | vm.swappiness 上限（`check --os`） |
-| `KB_WARN_NOFILE` / `KB_WARN_NPROC` | `65536` / `4096` | ulimit 下限（`check --os`） |
-| `KB_WARN_HIT` / `KB_FAIL_HIT` | `95` / `90` | Buffer 命中率下限 % |
+## 退出码
+
+| 退出码 | 含义 |
+|---|---|
+| 0 | OK |
+| 1 | WARN |
+| 2 | FAIL |
+| 3 | UNKNOWN：有东西没采到或看不到，所以不说 OK |
+| 64 | 参数错误 |
+| 69 | 连不上数据库 |
+
+## 权限
+
+以 `system` 走本地 socket 能看到全部信息。没有监控角色的账号看不到别人会话的状态、时间和 SQL；kbdiag 把这些字段列进 `redacted`，结论给 UNKNOWN 而不是 OK；看得到的部分已经是 WARN 或 FAIL 时照报 WARN 或 FAIL。授予 `sys_monitor` 后解除。备库上两阶段事务是 `not_applicable`（到主库跑 `txn`），不影响结论。
 
 ## 运行要求
 
-- 以 `kingbase` 系统用户运行（`sudo -i -u kingbase`）
-- KingbaseES V8R6+
-- repmgr 可选（不存在时集群命令自动跳过）
+- KingbaseES V8R6（在 V008R006C009B0014 上测试）
+- Linux amd64 或 arm64
+- repmgr 可选

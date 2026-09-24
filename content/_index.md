@@ -1,5 +1,5 @@
 ---
 title: "kbdiag · KingbaseES diagnostics"
-description: "Inspect instance and replication health, investigate SQL, locks and indexes, and follow evidence toward a diagnosis."
+description: "Command-line diagnostics for KingbaseES: a verdict, the evidence and the next step."
 weight: 0
 ---

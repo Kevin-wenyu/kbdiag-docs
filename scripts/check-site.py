@@ -2,7 +2,6 @@
 """Validate a built bilingual site, offline. Run after a clean Hugo build."""
 import argparse
 import json
-import re
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlsplit
@@ -11,12 +10,17 @@ CORE = {
     'docs/about/': (),
     'docs/features/': (),
     'docs/get-started/': (),
-    'docs/get-started/reading-results/': ('1407', '3bea0be'),
-    'docs/get-started/report-example/': ('Overall:', 'report'),
-    'docs/scenarios/slow-sql/': ('81070', 'PgSleep'),
-    'docs/scenarios/lock-waits/': ('81518', 'ShareLock'),
-    'docs/scenarios/replication-lag/': ('LSN', 'replication'),
+    'docs/get-started/reading-results/': ('6803c61', '436492'),
+    'docs/scenarios/slow-sql/': ('6803c61', '436010'),
+    'docs/scenarios/lock-waits/': ('6803c61', '435308'),
     'docs/reference/': (),
+    'docs/reference/sessions/': ('84c883e', '320047'),
+    'docs/reference/session/': ('0a4d61e', '367208'),
+    'docs/reference/locks/': ('0a4d61e', '364809'),
+    'docs/reference/txn/': ('0a4d61e', 'kbdiag_inj_2pc'),
+    'docs/reference/waits/': ('0a4d61e', '364818'),
+    'docs/reference/status/': ('6803c61', 'inst.connections'),
+    'docs/reference/slots/': ('6803c61', 'walreceiver'),
 }
 
 class Page(HTMLParser):
@@ -112,18 +116,6 @@ def validate(root, base, required=None):
                 path, _ = local_target(base, link)
                 if path is not None and not path.is_file():
                     errors.append(f'Search index {index.name}: missing {link}')
-    if required:
-        report = root / 'samples/inspection-report-20260916.md'
-        if not report.is_file():
-            errors.append('Missing downloadable report sample')
-        else:
-            text = report.read_text()
-            summary = re.search(r'Overall: (OK|WARN|FAIL).*?(\d+) OK / (\d+) WARN / (\d+) FAIL', text)
-            counts = [len(re.findall(r'^\[' + level + r'\]', text, re.M)) for level in ('OK', 'WARN', 'FAIL')]
-            if not summary or list(map(int, summary.groups()[1:])) != counts:
-                errors.append('Report summary does not match section finding counts')
-            if 'Redacted lab capture' not in text:
-                errors.append('Report missing redaction notice')
     return errors, len(pages), checks
 
 

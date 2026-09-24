@@ -1,51 +1,81 @@
 ---
-title: "怎样解读真实巡检结果"
-description: "真实测试输出、退出码与下一步。"
+title: "读懂一个真实结果"
+description: "测试环境实测的一个 WARN，逐行解读文本和 JSON 输出。"
 weight: 10
 ---
 
-采集于 2026-09-16（UTC+08），本地 KingbaseES V008R006C009B0014 主节点，数据库 `test`。工具源码提交 `3bea0be`，使用仓库中的 `dist/kbdiag`。这是测试环境实测，不代表生产环境验收。文中 PID、计数与时间只属于本次采样。
+采集于 2026-09-24（UTC+08），本地 KingbaseES V008R006C009B0014 主节点，数据库 `test`。工具是 Go 版源码提交 `6803c61` 编译的 `~/kbdiag`（linux/amd64 静态二进制）。这是测试环境实测，不代表生产环境验收。PID、计数和时间只属于本次采样。 idle in transaction 的会话由故障注入脚本造出来；为了不用等默认的 300 秒，用 `--idle-in-txn-warn 5` 把报警阈值调到了 5 秒。
 
-## 命令与完整输出
+## 命令和输出
 
 ```bash
-KB_DB=test ~/kbdiag check --no-color
-rc=$?
-printf "EXIT_CODE=%s\n" "$rc"
+~/kbdiag sessions --idle-in-txn-warn 5 --limit 5
+echo EXIT_CODE=$?
 ```
 
 ```text
-==> Health check
-[OK]    Connections: 12% (12/100)
-[OK]    Long transactions: none
-[OK]    Waiting locks: none
-[WARN]  Archiver: 1407 failed file(s)
-[OK]    Autovacuum backlog: none
-[OK]    Buffer hit rate: 99.6%
-[OK]    Checkpoint pressure: 0 requested checkpoints
-[OK]    Temp file usage: 0 bytes
-[OK]    Deadlocks: none
-[OK]    Replication slot lag: 0bytes
-[OK]    BGWriter pressure: 0% backend writes
-[OK]    XID age: 4717
-[OK]    oldest active transaction: 0s
-[WARN]  WAL archiving: failing (1407 failures, last: 2026-09-16 07:05:31.025697+08) — run: kbdiag backup
+sessions  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T10:20:28+08:00)
+
+[WARN] session.idle_in_txn  会话 436492 处于 idle in transaction 已 9 秒
+  verify: kbdiag session 436492  # 看它持有哪些锁、有没有挡住别人
+
+session.activity: 5 rows
+pid     usename  datname  application_name     client_addr  backend_type         state                backend_xid  backend_xmin  xact_age_s  query_age_s  state_age_s  wait_event_type  wait_event        query
+436492  system   test     kbdiag_inj_idle_txn  -            client backend       idle in transaction  6101         -             11.1        10.1         9.1          Client           ClientRead        select txid_current() as kbdiag_last, pg_sleep(1);
+3271    -        -        check pointer        -            checkpointer         -                    -            -             -           -            -            Activity         CheckpointerMain  
+3272    -        -        background flush     -            background writer    -                    -            -             -           -            -            Activity         BgWriterMain      
+3273    -        -        wal flush            -            walwriter            -                    -            -             -           -            -            Activity         WalWriterMain     
+3274    -        -        auto vacuum          -            autovacuum launcher  -                    -            -             -           -            -            Activity         AutoVacuumMain    
+... 7 more rows not shown (use --limit 0 to show all)
 EXIT_CODE=1
 ```
 
-## 怎样理解
+## 逐行看
 
-- 连接数为 12/100，连接检查为 OK；它不能覆盖归档等其他检查项。
-- 本次没有等待锁。出现等待锁计数时，`check` 统计的是未授予的锁记录，不等于会话数。
-- 两条归档 WARN 是相关信号，不能把两个 1407 相加；失败计数包含历史，需结合最后失败时间及后续成功记录判断是否仍在失败。
-- 本次完整命令退出码为 1，表示有 WARN、无 FAIL。若有 FAIL，返回 2。
+- **第一行**：命令（`sessions`）、结论（`WARN`）和上下文：数据库版本、角色（`primary`）、`用户@位置`（`local` 表示走 socket）和采集时间。
+- **finding**：`[WARN]`，然后是稳定的编号（`session.idle_in_txn`），再是症状：会话 436492 处于 idle in transaction 已 9 秒。脚本要依赖的是编号和字段，不是症状文字。
+- **`verify:`**：下一步要跑的命令和原因。这里是去看会话 436492 持有哪些锁、有没有挡住别人。如果出现 `fix:` 行，那是一条让你自己判断的语句，kbdiag 从不执行它。
+- **数据**：每个探针一张表，表名就是探针编号（`session.activity`）。`-` 表示空值。会话按事务时长排序，所以 idle in transaction 的会话排第一；后台进程也属于这张列表，跟在后面。
+- **截断**：`--limit 5` 显示了 5 行，另有 7 行没显示。判定仍然覆盖全部行，没显示的行里有问题照样会影响结论。
+- **退出码 1**：WARN。FAIL 是 2，UNKNOWN 是 3。
 
-## 下一步
+## 同一份报告的 JSON
 
-运行 `~/kbdiag backup` 查看备份与归档相关信息，再核实归档命令、目标目录空间、权限和数据库日志。不要为了让检查变绿而清空统计。本文没有修复或验收归档问题。
+`--json` 内容相同，字段名稳定。下面摘的是稍后一刻运行 `~/kbdiag sessions --idle-in-txn-warn 5 --limit 2 --json` 得到的 `findings` 数组：
 
-[锁等待排查]({{< relref "/docs/scenarios/lock-waits" >}}) · [回到首次巡检]({{< relref "/docs/get-started" >}}#run-check)
+```json
+[
+  {
+    "id": "session.idle_in_txn",
+    "level": "WARN",
+    "symptom": "会话 436492 处于 idle in transaction 已 10 秒",
+    "evidence": [
+      {
+        "probe_id": "session.activity",
+        "fields": {
+          "backend_xid": 6101,
+          "pid": 436492,
+          "state": "idle in transaction",
+          "state_age_s": 9.6
+        }
+      }
+    ],
+    "cause": null,
+    "next": [
+      {
+        "kind": "verify",
+        "command": "kbdiag session 436492",
+        "note": "看它持有哪些锁、有没有挡住别人"
+      }
+    ]
+  }
+]
+```
 
-## 后续修复记录
+完整报告里还有 `command`、`verdict`、`context`、`data`（每个探针带 `status`、`columns`、`rows` 和 `truncated`）以及 `redacted`（当前账号无权看到的字段）。退出码和文本模式一样。
 
-2026-09-16，核实并更新归档仓库节点的 SSH 主机密钥，补齐备份检查的端口和角色配置后，`sys_rman check` 成功验证新 WAL 入库。最终两节点待归档队列均为 0；主节点成功归档 35 个 WAL，历史失败数保持 1422。历史 WARN 保留，未重置统计。上文保留修复前采样，不能代表当前状态；本次未做完整恢复演练。
+## 后续
+
+注入的会话随后被释放，复查时已经没有测试会话。真实情况下，先跑 `verify` 命令，再和应用负责人一起决定这个事务该提交、回滚还是断开连接。
+
+[排查锁等待]({{< relref "/docs/scenarios/lock-waits" >}}) · [回到第一次检查]({{< relref "/docs/get-started" >}}#exit-codes)

@@ -1,111 +1,97 @@
 ---
-title: "Your first inspection"
-description: "Install, configure the connection, run health checks and interpret the results."
+title: "Your first check"
+description: "Build the binary, install it on the database host, connect, and read the verdict and exit code."
 weight: 30
 ---
 
-Run `status` and `check`, then decide what needs further investigation. Run these commands on the **KingbaseES host**, not on the website build machine.
+Build kbdiag once, copy it to the **KingbaseES host**, and run `status` and `sessions`. Then decide what needs a closer look.
 
-## 1. Prepare the environment {#requirements}
+## 1. Prepare {#requirements}
 
-- A running KingbaseES V8R6+ instance.
-- Access to the `kingbase` OS user and the database's `ksql` client.
-- The correct port, database and database user, with access to the required system views.
-- repmgr is needed for relevant cluster features, not standalone health checks.
+- A running KingbaseES V8R6 instance (tested on V008R006C009B0014).
+- Access to the `kingbase` OS user on the database host.
+- A machine with Go (the version in the repository's `go.mod`) and git, to build the binary. It can be your laptop; the database host needs nothing but the binary.
 
-## 2. Install {#install}
+## 2. Build and install {#install}
 
-Switch to the database OS user:
+On the build machine:
 
 ```bash
-sudo -i -u kingbase
+git clone https://github.com/Kevin-wenyu/kbdiag.git
+cd kbdiag
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(git describe --tags --match 'v2*' --always)" -o kbdiag ./cmd/kbdiag
+scp kbdiag kingbase@db-host:~/kbdiag
 ```
 
-Download the single file:
+Use `GOARCH=arm64` for ARM hosts. The result is one static file with no runtime dependencies, so an offline host only needs the file copied over.
+
+On the database host:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Kevin-wenyu/kbdiag/main/dist/kbdiag \
-  -o ~/kbdiag
+sudo -iu kingbase
 chmod +x ~/kbdiag
 ~/kbdiag --version
 ```
 
-For an offline host, download `dist/kbdiag` on a connected machine, copy it to `~/kbdiag` on the database host, and set its executable permission. Downloading to an existing path replaces that file; keep a copy before updating if needed.
+## 3. Connect {#connection}
 
-## 3. Confirm the target instance {#connection}
+By default kbdiag connects over the local socket `/tmp/.s.KINGBASE.54321` to database `test` as user `system`, the way `ksql test system` does. Change the target with flags:
 
-Defaults are port `54321`, database `test` and database user `system`. Directory detection does not automatically resolve every connection parameter. Start with:
+| Flag | Default |
+|---|---|
+| `--host` | `/tmp` (socket directory); a host name or IP for TCP |
+| `-p, --port` | `54321` |
+| `-d, --dbname` | `test` |
+| `-U, --user` | `system` |
+| `--timeout` | `10s` per query |
+
+The password comes from `PGPASSWORD` or `~/.pgpass`. If kbdiag cannot connect, it prints the error and exits with 69; check the port, socket directory and `sys_hba.conf` before anything else.
+
+An account without a monitoring role cannot see other sessions' state, timings or SQL. kbdiag lists those fields under `redacted` and answers UNKNOWN rather than OK; grant `sys_monitor` or use `system` for the full picture.
+
+## 4. Run your first checks {#run-check}
 
 ```bash
-~/kbdiag instances
 ~/kbdiag status
+echo "exit code: $?"
+~/kbdiag sessions
+echo "exit code: $?"
 ```
 
-On hosts with multiple instances, use `instances` to identify the target port and paths. If necessary, edit `~/.kbdiagrc`, replacing these examples with actual values:
+Read `$?` right after the command; the next command replaces it. `status` tells you what the instance is and whether connections are running out. `sessions` lists everyone connected and warns about sessions left idle in transaction.
 
-```bash
-KB_PORT=54321
-KB_DB=test
-KB_SUPERUSER=system
-KB_BIN_DIR=/actual/install/path/bin
-KB_DATA_DIR=/actual/data/path
-```
+## 5. Read the verdict and exit code {#exit-codes}
 
-Retry `~/kbdiag status`. Edit existing entries if the file already exists; it is sourced as Shell configuration.
+The first line of every report carries the verdict, and the exit code says the same thing:
 
-**Resolve connection problems first:** check the process, port, authentication, paths and privileges. Unavailable evidence does not mean health. A failed database connectivity check makes `check` return `2`.
-
-## 4. Run the health check {#run-check}
-
-```bash
-~/kbdiag check
-check_rc=$?
-printf 'check exit code: %s\n' "$check_rc"
-```
-
-Save `$?` immediately: later commands replace it. For additional detail:
-
-```bash
-~/kbdiag check -v
-~/kbdiag check --os
-```
-
-`-v` expands some underlying data; `--os` adds host conformance checks. Findings reflect the current sample and thresholds, not every moment in the instance's lifetime.
-
-## 5. Interpret exit codes {#exit-codes}
-
-| `check` exit code | Meaning | Next step |
+| Exit code | Verdict | Next step |
 |---|---|---|
-| `0` | No WARN / FAIL in this inspection | Keep the results; investigate relevant dimensions if the application still has problems |
-| `1` | At least one warning | Review the finding with the workload and thresholds in mind |
-| `2` | A FAIL finding or failed database connectivity | Identify the failed check and connection state first |
+| `0` | OK | Nothing crossed a threshold in this sample |
+| `1` | WARN | Read each finding and run its `verify` command |
+| `2` | FAIL | Same, sooner: something is already broken or about to be |
+| `3` | UNKNOWN | Something could not be collected or seen; check privileges and the `redacted` list |
+| `64` | Usage error | Check the command and flags |
+| `69` | Cannot connect | Check the connection first; nothing was looked at |
 
-This table is specific to `check`. Most data-query commands require `--exit-code` to reflect findings in their exit status; usage and runtime errors can also produce nonzero exits.
+A WARN or FAIL finding wins over UNKNOWN: if kbdiag found a problem in what it could see, it says so.
 
-[Read an explicitly illustrative result](reading-results/)
+[Read a real result line by line](reading-results/)
 
 ## 6. Follow the evidence {#next-check}
 
-| Finding | Next command | Look for |
+| You see | Next command | Look for |
 |---|---|---|
-| Lock waits | `~/kbdiag locks wait` | Waiting and blocking information |
-| Active slow queries | `~/kbdiag perf slow` | Sessions, duration and SQL |
-| Replication findings | `~/kbdiag replication` | Node role and replication state |
-| Space findings | `~/kbdiag space` | Host storage and database objects |
-| Multiple related signals | `~/kbdiag diagnose` | Evidence, recommendations and verification paths |
+| A lock wait | `~/kbdiag session <blocker pid>` | What the blocker is doing and how long its transaction has been open |
+| Idle in transaction | `~/kbdiag session <pid>` | The locks it holds and whether it blocks anyone |
+| An old or prepared transaction | `~/kbdiag txn` | Transaction age, the prepared transaction's gid and owner |
+| Many sessions waiting | `~/kbdiag waits` | Which wait event they share |
+| Connections near the limit | `~/kbdiag sessions --limit 0` | A pile-up by user, application or client address |
+| An inactive slot | `~/kbdiag sessions` on the standby | Whether it is up and has a `walreceiver` |
 
-To create a handover file, choose a new filename:
+Each finding already prints the right one of these as its `verify` line.
 
-```bash
-~/kbdiag report inspection.md
-```
+## Done {#done}
 
-The report is written to the current directory. Read its WARN / FAIL summary and details; the command can return nonzero because it found problems.
-
-## Completion criteria {#done}
-
-You have identified the target instance, run `status` and `check`, understood the check's exit code, and found a follow-up command for a finding.
+You have built and installed kbdiag, connected to the right instance, run `status` and `sessions`, and know what their exit codes mean.
 
 [Explore capabilities](../features/) · [Look up command options](../reference/)
-
-- [Inspection report example]({{< relref "/docs/get-started/report-example" >}})
