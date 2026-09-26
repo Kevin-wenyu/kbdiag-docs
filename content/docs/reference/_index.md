@@ -39,7 +39,7 @@ echo $?                  # 0 OK, 1 WARN, 2 FAIL, 3 UNKNOWN
 
 | Command | What it shows | Flags |
 |---|---|---|
-| `status` | Version, role, uptime, connections, database sizes, downstream count; WARN/FAIL when connections near the limit | `--conn-warn P`, `--conn-fail P` |
+| `status` | Version, role, uptime, connections, replication up/downstream, database sizes, disk; FAIL when connections are used up, WARN when a standby is not receiving WAL | — |
 | `sessions` | All sessions; WARN on long idle in transaction | `--active`, `--limit N`, `--idle-in-txn-warn S` |
 | `session <pid>` | One session: its activity, its locks, whom it blocks or is blocked by | `--lock-wait-warn S`, `--idle-in-txn-warn S` |
 | `locks` | Lock waits and their direct blockers; WARN on long waits | `--limit N`, `--lock-wait-warn S` |
@@ -47,7 +47,7 @@ echo $?                  # 0 OK, 1 WARN, 2 FAIL, 3 UNKNOWN
 | `waits` | Sessions grouped by wait event and state | |
 | `slots` | Replication slots; FAIL on inactive ones | |
 
-Defaults: connections 80% (WARN) / 100% (FAIL) of what ordinary users may open (`max_connections` less `superuser_reserved_connections`), idle in transaction 300 s, lock wait 10 s, transaction 300 s (WARN) / 1800 s (FAIL), prepared transaction 900 s (FAIL). `--limit` only trims what is shown; findings always cover every row.
+Defaults: idle in transaction 300 s, lock wait 10 s, transaction 300 s (WARN) / 1800 s (FAIL), prepared transaction 900 s (FAIL). `--limit` only trims what is shown; findings always cover every row.
 
 ## Connection
 

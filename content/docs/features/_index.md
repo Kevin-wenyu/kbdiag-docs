@@ -8,13 +8,13 @@ Start with the question you need to answer. Examples assume the binary is at `~/
 
 ## Instance {#instance}
 
-**What is this instance, and are connections running out?**
+**What is this instance, and do its basics hold?**
 
 ```bash
 ~/kbdiag status
 ```
 
-Version, role (primary / standby), uptime, database sizes, how many downstreams it sends WAL to, and connections. Connections are measured against what ordinary users may open (`max_connections` less `superuser_reserved_connections`): WARN at 80%, FAIL at 100%, adjustable with `--conn-warn` / `--conn-fail`.
+Version, role (primary / standby), uptime, connections, which standbys it sends WAL to or where a standby receives WAL from, database sizes, and the disk holding the data directory. FAIL when every connection ordinary users may open is taken (`max_connections` less `superuser_reserved_connections`); WARN when a standby is not receiving WAL.
 
 → [status]({{< relref "/docs/reference/status" >}})
 

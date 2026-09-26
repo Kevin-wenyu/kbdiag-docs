@@ -8,13 +8,13 @@ weight: 20
 
 ## 实例概况 {#instance}
 
-**这是个什么实例，连接快满了吗？**
+**这是个什么实例，基本面正常吗？**
 
 ```bash
 ~/kbdiag status
 ```
 
-版本、角色（主 / 备）、运行时长、各库大小、给几个下游发 WAL，以及连接数。连接数按普通用户可用的上限算（`max_connections` 减去 `superuser_reserved_connections`）：到 80% WARN，到 100% FAIL，可以用 `--conn-warn` / `--conn-fail` 调整。
+版本、角色（主 / 备）、运行时长、连接数、给哪些备库发 WAL（备库则是从哪里收 WAL）、各库大小，以及数据目录所在的磁盘。普通用户可用的连接（`max_connections` 减去 `superuser_reserved_connections`）全部占满时 FAIL；备库没在收 WAL 时 WARN。
 
 → [status]({{< relref "/docs/reference/status" >}})
 

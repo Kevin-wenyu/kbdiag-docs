@@ -58,7 +58,7 @@ echo "exit code: $?"
 echo "exit code: $?"
 ```
 
-`$?` 要紧跟在命令后面读，下一条命令会覆盖它。`status` 告诉你这是个什么实例、连接快满了没有；`sessions` 列出所有连着的会话，并对停在 idle in transaction 的会话报警。
+`$?` 要紧跟在命令后面读，下一条命令会覆盖它。`status` 告诉你这是个什么实例、基本面是否正常：连接、复制、磁盘；`sessions` 列出所有连着的会话，并对停在 idle in transaction 的会话报警。
 
 ## 5. 读懂结论和退出码 {#exit-codes}
 
@@ -85,7 +85,7 @@ WARN 或 FAIL 的 finding 优先于 UNKNOWN：在看得到的范围里发现了�
 | idle in transaction | `~/kbdiag session <pid>` | 它持有哪些锁、有没有挡住别人 |
 | 老事务或两阶段事务 | `~/kbdiag txn` | 事务时长，两阶段事务的 gid 和 owner |
 | 很多会话在等 | `~/kbdiag waits` | 它们等的是不是同一个事件 |
-| 连接快满 | `~/kbdiag sessions --limit 0` | 按用户、应用名、客户端地址看有没有扎堆 |
+| 连接占满 | `~/kbdiag sessions --limit 0` | 按用户、应用名、客户端地址看有没有扎堆 |
 | 未激活的槽 | 在备库上跑 `~/kbdiag sessions` | 备库是否在线、有没有 `walreceiver` |
 
 每条 finding 的 `verify` 行已经给出了对应的那一条。

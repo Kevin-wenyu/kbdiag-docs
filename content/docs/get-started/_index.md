@@ -58,7 +58,7 @@ echo "exit code: $?"
 echo "exit code: $?"
 ```
 
-Read `$?` right after the command; the next command replaces it. `status` tells you what the instance is and whether connections are running out. `sessions` lists everyone connected and warns about sessions left idle in transaction.
+Read `$?` right after the command; the next command replaces it. `status` tells you what the instance is and whether its basics hold: connections, replication, disk. `sessions` lists everyone connected and warns about sessions left idle in transaction.
 
 ## 5. Read the verdict and exit code {#exit-codes}
 
@@ -85,7 +85,7 @@ A WARN or FAIL finding wins over UNKNOWN: if kbdiag found a problem in what it c
 | Idle in transaction | `~/kbdiag session <pid>` | The locks it holds and whether it blocks anyone |
 | An old or prepared transaction | `~/kbdiag txn` | Transaction age, the prepared transaction's gid and owner |
 | Many sessions waiting | `~/kbdiag waits` | Which wait event they share |
-| Connections near the limit | `~/kbdiag sessions --limit 0` | A pile-up by user, application or client address |
+| Connections used up | `~/kbdiag sessions --limit 0` | A pile-up by user, application or client address |
 | An inactive slot | `~/kbdiag sessions` on the standby | Whether it is up and has a `walreceiver` |
 
 Each finding already prints the right one of these as its `verify` line.
