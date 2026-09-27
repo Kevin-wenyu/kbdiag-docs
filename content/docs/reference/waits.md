@@ -1,10 +1,10 @@
 ---
 title: "waits: wait events"
-description: "Group sessions by wait event and state to see what they wait on right now."
+description: "What the working sessions are waiting on right now, biggest pile first."
 weight: 50
 ---
 
-Captured on 2026-09-24 (UTC+08) on a local KingbaseES V008R006C009B0014 primary, database `test`, using `~/kbdiag` built from Go source commit `0a4d61e` (static linux/amd64 binary). This is lab evidence, not production validation. The lock wait in the examples was created by a fault-injection script: 364809 holds a table lock idle in transaction, and 364818 waits for it. PIDs, counts and timings belong to this capture only.
+Captured on 2026-09-27 (UTC+08) on a local KingbaseES V008R006C009B0014 primary and standby, database `test`, using `~/kbdiag` built from Go source commit `93bf65d` (static linux/amd64 binary). This is lab evidence, not production validation. The sessions in the examples were created by fault-injection scripts: two sessions idle in transaction, two waiting for table locks, and a `pg_sleep(3600)`. PIDs, counts and timings belong to this capture only.
 
 ## Usage
 
@@ -22,54 +22,88 @@ echo EXIT_CODE=$?
 ```
 
 ```text
-waits  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:38:54+08:00)
+waits  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:35:18+08:00)
 
-wait.summary: 10 rows
-wait_event_type  wait_event           state                sessions  pids
-Client           ClientRead           idle                 3         [3294 179417 222736]
-Activity         KshMain              idle                 2         [3279 3280]
-Activity         AutoVacuumMain       -                    1         [3274]
-Activity         BgWriterHibernate    -                    1         [3272]
-Activity         CheckpointerMain     -                    1         [3271]
-Activity         LogicalLauncherMain  -                    1         [3281]
-Activity         WalSenderMain        active               1         [364531]
-Activity         WalWriterMain        -                    1         [3273]
-Client           ClientRead           idle in transaction  1         [364809]
-Lock             relation             active               1         [364818]
+not idle: 5
+  wait               state                sessions  pids
+  Lock:relation      active               2         1045724 1046007
+  Client:ClientRead  idle in transaction  2         1045715 1045809
+  Timeout:PgSleep    active               1         1046088
+
+not shown: 3 idle, 8 background
 EXIT_CODE=0
 ```
 
-- Each row is one (wait event type, wait event, state) group; `sessions` counts them and `pids` lists them. Rows are sorted by count, largest first.
-- Sessions not waiting (no wait event) are grouped by state too, so the table covers every session except kbdiag's own connection.
-- `waits` summarizes and applies no thresholds: it is OK when every session is visible, and UNKNOWN when some are hidden (see below). The `Lock / relation` row is 364818 waiting for the lock; for how long and who blocks it, use [`locks`]({{< relref "/docs/reference/locks" >}}).
+- `not idle` groups the sessions that are doing something by wait event and state. `sessions` counts them and `pids` lists them. The biggest group comes first, since a pile-up is what to look for; on a tie `active` comes first.
+- `Lock:relation`: two sessions wait for table locks; who blocks them and for how long is in [`locks`]({{< relref "/docs/reference/locks" >}}).
+- `Client:ClientRead` with `idle in transaction`: the sessions wait for their client to send the next statement while holding a transaction open.
+- `Timeout:PgSleep` is the injected `pg_sleep`. An active session with no wait event shows `(running)`: on CPU, or in code without a wait event.
+- `pids` lists up to 10 PIDs, then `... (+N)`. `--json` has them all.
+- `not shown` counts what is left out. `idle` sessions do not answer "where is it stuck". Nor do background processes idling in their main loop (any `Activity` wait, such as a walsender with nothing to send or the checkpointer between checkpoints). A background process stuck on a real wait, for example the checkpointer on `IO:DataFileSync`, is listed with the state `(background)`.
 
-## Without monitoring privileges
+There are no thresholds and no options. Ten sessions waiting on IO can be an incident on one database and routine on another, so waits only reports. A lock wait that is too long is judged by `locks`.
 
-Connected remotely as `kbdiag_ro`, which has no monitoring role:
+A quiet primary:
 
 ```bash
-PGPASSWORD=... ~/kbdiag waits --host 127.0.0.1 -U kbdiag_ro
+~/kbdiag waits
 echo EXIT_CODE=$?
 ```
 
 ```text
-waits  UNKNOWN  (KingbaseES V008R006C009B0014, primary, kbdiag_ro@remote, 2026-09-24T04:41:05+08:00)
+waits  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:34:44+08:00)
 
-wait.summary: 2 rows
-wait_event_type  wait_event     state   sessions  pids
--                -              -       12        [3271 3272 3273 3274 3279 3280 3281 3294 179417 222736 36...
-Activity         WalSenderMain  active  1         [366619]
+not idle: 0
 
-redacted: wait.summary.wait_event_type in 12 rows (insufficient_privilege)
-redacted: wait.summary.wait_event in 12 rows (insufficient_privilege)
-redacted: wait.summary.state in 12 rows (insufficient_privilege)
+not shown: 3 idle, 8 background
+EXIT_CODE=0
+```
+
+On a busy primary a walsender catching up may appear with a wait such as `IO:WALRead`; that is normal.
+
+## On a standby
+
+```bash
+~/kbdiag waits
+echo EXIT_CODE=$?
+```
+
+```text
+waits  OK  (KingbaseES V008R006C009B0014, standby, system@local, 2026-09-27T13:37:21+08:00)
+
+not idle: 1
+  wait           state   sessions  pids
+  Lock:advisory  active  1         599825
+
+not shown: 3 idle, 4 background
+EXIT_CODE=0
+```
+
+## Insufficient privilege
+
+Connect as `kbdiag_ro`, which has no monitoring role:
+
+```bash
+PGPASSWORD=... ~/kbdiag --host 127.0.0.1 -U kbdiag_ro waits
+echo EXIT_CODE=$?
+```
+
+```text
+waits  UNKNOWN  (KingbaseES V008R006C009B0014, primary, kbdiag_ro@remote, 2026-09-27T13:35:27+08:00)
+
+not idle: 0
+
+not shown: 1 background, 15 hidden (state unknown)
+redacted: 15 rows of wait.summary hide wait, state (insufficient_privilege; grant sys_monitor)
 EXIT_CODE=3
 ```
 
-- Hidden sessions have no wait event or state, so they fall into the all-empty row (12 here); `redacted` says this is a privilege issue, not an absence of waits.
-- With hidden sessions kbdiag cannot claim nothing is waiting, so the verdict is UNKNOWN, exit code 3.
-- Long cells are cut in text output (ending in `...`); `--json` gives the full PID list.
-- Granting the `sys_monitor` role restores the full picture.
+- Other users' sessions have no visible wait event or state. They may be idle or not, so they are counted as `hidden (state unknown)`, not as idle. Sessions that turned off `track_activities` are counted as `untracked (state unknown)` for the same reason.
+- With hidden sessions kbdiag cannot claim nothing is waiting, so the verdict is UNKNOWN, exit code 3. Grant `sys_monitor` to see everything.
+
+## JSON
+
+`--json` has every group, idle and background ones included, with the full PID lists: `wait_event_type`, `wait_event`, `state`, `sessions` and `pids`.
 
 ## Exit codes
 

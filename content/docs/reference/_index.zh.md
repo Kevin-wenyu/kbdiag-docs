@@ -39,15 +39,15 @@ echo $?                  # 0 OK，1 WARN，2 FAIL，3 UNKNOWN
 
 | 命令 | 看什么 | 参数 |
 |---|---|---|
-| `status` | 版本、角色、运行时长、连接数、各库大小、下游数量；连接快满时 WARN/FAIL | `--conn-warn 百分比`、`--conn-fail 百分比` |
-| `sessions` | 全部会话；idle in transaction 过久报 WARN | `--active`、`--limit N`、`--idle-in-txn-warn 秒` |
-| `session <pid>` | 一个会话：活动、持有的锁、挡住谁或被谁挡住 | `--lock-wait-warn 秒`、`--idle-in-txn-warn 秒` |
-| `locks` | 锁等待和直接挡路者；等太久报 WARN | `--limit N`、`--lock-wait-warn 秒` |
-| `txn` | 开着的事务和两阶段事务；过久报 WARN/FAIL | `--limit N`、`--xact-warn 秒`、`--xact-fail 秒`、`--prepared-fail 秒` |
-| `waits` | 按等待事件和状态汇总会话 | |
-| `slots` | 复制槽；未激活报 FAIL | |
+| `status` | 版本、数据目录、端口、角色；主库列出每个备库，备库看上游在不在收 WAL；运行时长、连接数已用/可用、各库大小、数据目录所在磁盘（只在本机运行时有）。普通用户已经连不上报 FAIL，备库没在收 WAL 报 WARN | |
+| `sessions` | 连接是谁占的（按用户、库、应用、客户端计数），再列出不是 idle 的客户端会话，事务最长的在前；idle in transaction 过久报 WARN。JSON 总是全部会话 | `--all`、`--limit N`、`--idle-in-txn-warn 秒` |
+| `session <pid>` | 一个会话：是谁、在干什么、完整 SQL，在等什么锁、被谁挡住，挡住了谁，持有哪些锁 | `--lock-wait-warn 秒`、`--idle-in-txn-warn 秒` |
+| `locks` | 谁挡的人最多、它持有什么锁，再列出每个等锁的会话（等得最久的在前）和直接挡路者；等太久报 WARN | `--limit N`、`--lock-wait-warn 秒` |
+| `txn` | 最老的 xid 压着 vacuum、是谁压的，开着的事务，两阶段事务；过久报 WARN | `--limit N`、`--xact-warn 秒`、`--prepared-warn 秒` |
+| `waits` | 在干活的会话在等什么，按等待事件和状态汇总，人多的在前；idle 会话和后台进程只计数 | |
+| `slots` | 复制槽，未激活的和保留 WAL 最多的排前面；未激活报 WARN | |
 
-默认阈值：连接数到普通用户可用上限（`max_connections` 减去 `superuser_reserved_connections`）的 80% WARN、100% FAIL，idle in transaction 300 秒，等锁 10 秒，事务 300 秒 WARN、1800 秒 FAIL，两阶段事务 900 秒 FAIL。`--limit` 只影响显示，判定始终覆盖全部行。
+默认阈值：idle in transaction 300 秒，等锁 10 秒，事务 300 秒，两阶段事务 900 秒，都报 WARN。`--limit` 只影响显示，判定始终覆盖全部行。
 
 ## 连接
 
@@ -65,20 +65,23 @@ echo $?                  # 0 OK，1 WARN，2 FAIL，3 UNKNOWN
 ## 输出
 
 ```text
-locks  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:38:53+08:00)
+locks  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-26T19:41:41+08:00)
 
-[WARN] lock.waiting  会话 364818 等 public.kbdiag_inj_lock 的 AccessShareLock 已 14 秒，被 364809 挡住
-  verify: kbdiag session 364809  # 看挡路的会话在干什么
+[WARN] lock.waiting  session 803890 has waited 14s for AccessShareLock on public.kbdiag_inj_lock, blocked by 803881
+  verify: kbdiag session 803881  # what the blocking session is doing
 
-lock.list: 2 rows
-pid     locktype  relation                mode                 granted  wait_s  blocked_by
-364809  relation  public.kbdiag_inj_lock  AccessExclusiveLock  true     -       []
-364818  relation  public.kbdiag_inj_lock  AccessShareLock      false    13.8    [364809]
+blockers: 1
+  pid     blocks  holds
+  803881  1       public.kbdiag_inj_lock AccessExclusiveLock
+
+waiting: 1
+  pid     object                  wants            waited  blocked by
+  803890  public.kbdiag_inj_lock  AccessShareLock  14s     803881
 ```
 
 - 第一行：命令、结论和上下文（版本、角色、用户@位置、采集时间）。
-- finding：编号、症状、下一步（`verify` 看什么或 `fix` 怎么处理）。
-- 数据：每个探针一张表，`-` 表示空值。`--json` 内容相同，字段名稳定。
+- finding：编号、症状（英文，工具输出全部是英文）、下一步（`verify` 看什么或 `fix` 怎么处理）。
+- 数据：按阅读排版，大小和时长换成易读单位；`-` 表示空值，`?` 表示当前账号看不到。`--json` 给每个探针的原始表（字节、秒），字段名稳定。
 
 ## 退出码
 

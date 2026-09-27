@@ -1,113 +1,174 @@
 ---
 title: "txn：事务"
-description: "列出开着的事务和两阶段提交（prepare 后未结束）的事务，标出过长的。"
+description: "谁压着 vacuum 视界：开着的事务、两阶段（prepared）事务，以及其中最老的那个。"
 weight: 40
 ---
 
-采集于 2026-09-24（UTC+08），本地 KingbaseES V008R006C009B0014 主节点和备节点，数据库 `test`。工具是 Go 版源码提交 `0a4d61e` 编译的 `~/kbdiag`（linux/amd64 静态二进制）。这是测试环境实测，不代表生产环境验收。示例里的事务是故障注入脚本造出来的：365547 开了事务后停在 idle in transaction，`kbdiag_inj_2pc` 是一个 prepare 后没有提交也没有回滚的两阶段事务。PID、计数与时间只属于本次采样。
+采集于 2026-09-27（UTC+08），本地 KingbaseES V008R006C009B0014 主节点和备节点，数据库 `test`。工具是 Go 版源码提交 `93bf65d` 编译的 `~/kbdiag`（linux/amd64 静态二进制）。这是测试环境实测，不代表生产环境验收。示例里的事务是故障注入脚本造出来的：两个 idle in transaction 的会话（其中一个持有表锁）、几个在等锁的会话、一个 `pg_sleep(3600)`，还有 `kbdiag_inj_2pc`，一个既没提交也没回滚的两阶段事务。PID、计数与时间只属于本次采样。
 
 ## 用法
 
 ```text
-kbdiag txn [--limit N] [--xact-warn 秒] [--xact-fail 秒] [--prepared-fail 秒] [--json]
+kbdiag txn [--limit N] [--xact-warn 秒] [--prepared-warn 秒] [--json]
 ```
 
 | 参数 | 作用 |
 |---|---|
-| `--limit N` | 最多显示 N 个会话，默认 50，`0` 表示全部 |
-| `--xact-warn 秒` | 事务开了多少秒报 WARN，默认 300 |
-| `--xact-fail 秒` | 事务开了多少秒报 FAIL，默认 1800 |
-| `--prepared-fail 秒` | 两阶段事务 prepare 后多少秒报 FAIL，默认 900 |
+| `--limit N` | 最多显示 N 个事务，默认 50，`0` 表示全部 |
+| `--xact-warn 秒` | 事务开了超过多少秒报 WARN，默认 300 |
+| `--prepared-warn 秒` | 两阶段事务挂了超过多少秒报 WARN，默认 900 |
 | `--json` | 输出 JSON |
 
-连接参数和 [`sessions`]({{< relref "/docs/reference/sessions" >}}) 相同。`--limit` 只影响显示，判定始终覆盖全部会话。
+连接参数和 [`sessions`]({{< relref "/docs/reference/sessions" >}}) 相同。`--limit` 只影响显示，判定始终覆盖全部事务。
 
 ## 默认输出
 
 ```bash
-~/kbdiag txn --limit 5
+~/kbdiag txn
 echo EXIT_CODE=$?
 ```
 
 ```text
-txn  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:39:03+08:00)
+txn  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:35:18+08:00)
 
-session.activity: 1 rows
-pid     usename  datname  application_name     client_addr  backend_type    state                backend_xid  backend_xmin  xact_age_s  query_age_s  state_age_s  wait_event_type  wait_event  query
-365547  system   test     kbdiag_inj_idle_txn  -            client backend  idle in transaction  6019         -             5.7         4.7          3.7          Client           ClientRead  select txid_current() as kbdiag_last, pg_sleep(1);
+oldest xid: 6343  (1045715 xid, 1045724 xmin, 1046007 xmin, 1046088 xmin)
 
-txn.prepared: 1 rows
-gid             owner   database  prepared_at                age_s  transaction
-kbdiag_inj_2pc  system  test      2026-09-24T04:38:56+08:00  7.4    6018
+open transactions: 5
+  pid      user    database  application                 state                xact  xid   xmin  sql
+  1045715  system  test      kbdiag_inj_lock_holder      idle in transaction  31s   6343  -     lock table kbdiag_inj_lock in access exclusive mode;
+  1045724  system  test      kbdiag_inj_lock_waiter      active               30s   -     6343  select count(*) from kbdiag_inj_lock;
+  1045809  system  test      kbdiag_inj_idle_txn         idle in transaction  29s   6344  -     select txid_current() as kbdiag_last, pg_sleep(1);
+  1046007  system  test      kbdiag_inj_prepared_waiter  active               25s   6347  6343  lock table kbdiag_inj_2pc in access exclusive mode;
+  1046088  system  test      kbdiag_inj_long_query       active               25s   -     6343  select pg_sleep(3600);
+
+prepared: 1
+  gid             owner   database  age  xid
+  kbdiag_inj_2pc  system  test      26s  6346
 EXIT_CODE=0
 ```
 
-- `session.activity` 列两类会话：在事务里的（有事务开始时间、事务号 `backend_xid` 或快照 `backend_xmin`），以及看不到状态、无法判断是否在事务里的（权限不足、关了 track_activities）。列和 `sessions` 一样。
-- `txn.prepared` 列出所有两阶段事务。它们不属于任何会话，所以 `sessions` 看不到。
-- 两者都没到默认阈值，结论 OK。
+- `oldest xid` 是所有会话和两阶段事务里最老的事务号，以及谁持有它。这里 1045715 的事务号是 6343，另外三个会话的快照（`xmin`）是在 6343 还没结束时拿的。VACUUM 不能清理比它新的行版本，所以这一行回答"谁压着 vacuum 视界"。事务号按 2^32 取模比较，和服务器一样。
+- `open transactions` 列出在事务里的会话：有事务开始时间、事务号或快照 xmin 的。事务最老的在前。`xid` 在第一次写的时候才分配，只读事务只有 `xmin`。
+- `prepared` 列出所有两阶段事务：gid、属主、库、挂了多久、事务号。它们不属于任何会话，所以 [`sessions`]({{< relref "/docs/reference/sessions" >}}) 看不到。
+- 都没到默认阈值，所以结论是 OK。
 
-## 出现 WARN 和 FAIL
+## 报 WARN
 
-把阈值调低：
+把两个阈值都降到 10 秒：
 
 ```bash
-~/kbdiag txn --xact-warn 2 --prepared-fail 2 --limit 5
+~/kbdiag txn --xact-warn 10 --prepared-warn 10
 echo EXIT_CODE=$?
 ```
 
 ```text
-txn  FAIL  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:39:04+08:00)
+txn  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:35:21+08:00)
 
-[WARN] txn.long  会话 365547 的事务已开了 6 秒，当前 idle in transaction
-  verify: kbdiag session 365547  # 看它在跑什么、持有哪些锁、有没有挡住别人
+[WARN] txn.long  session 1045715 has had a transaction open for 34s, now idle in transaction
+  verify: kbdiag session 1045715  # what it is running, which locks it holds, whether it blocks anyone
 
-[FAIL] txn.prepared  两阶段事务 kbdiag_inj_2pc 已 prepare 8 秒未结束，压着视界
-  fix: ROLLBACK PREPARED 'kbdiag_inj_2pc'  # 先和应用确认它该提交还是回滚（提交用 COMMIT PREPARED）；要连到库 test 执行，且不能放在事务块里
+[WARN] txn.long  session 1045724 has had a transaction open for 34s, now active
+  verify: kbdiag session 1045724  # what it is running, which locks it holds, whether it blocks anyone
 
-session.activity: 1 rows
-pid     usename  datname  application_name     client_addr  backend_type    state                backend_xid  backend_xmin  xact_age_s  query_age_s  state_age_s  wait_event_type  wait_event  query
-365547  system   test     kbdiag_inj_idle_txn  -            client backend  idle in transaction  6019         -             6.2         5.2          4.2          Client           ClientRead  select txid_current() as kbdiag_last, pg_sleep(1);
+[WARN] txn.long  session 1045809 has had a transaction open for 32s, now idle in transaction
+  verify: kbdiag session 1045809  # what it is running, which locks it holds, whether it blocks anyone
 
-txn.prepared: 1 rows
-gid             owner   database  prepared_at                age_s  transaction
-kbdiag_inj_2pc  system  test      2026-09-24T04:38:56+08:00  7.9    6018
-EXIT_CODE=2
+[WARN] txn.long  session 1046007 has had a transaction open for 28s, now active
+  verify: kbdiag session 1046007  # what it is running, which locks it holds, whether it blocks anyone
+
+[WARN] txn.long  session 1046088 has had a transaction open for 28s, now active
+  verify: kbdiag session 1046088  # what it is running, which locks it holds, whether it blocks anyone
+
+[WARN] txn.prepared  two-phase transaction kbdiag_inj_2pc prepared 29s ago and not finished, holding back the vacuum horizon
+  fix: ROLLBACK PREPARED 'kbdiag_inj_2pc'  # check with the application whether to commit (COMMIT PREPARED) or roll back; run it connected to database test, outside a transaction block
+
+oldest xid: 6343  (1045715 xid, 1045724 xmin, 1046007 xmin, 1046088 xmin)
+
+open transactions: 5
+  pid      user    database  application                 state                xact  xid   xmin  sql
+  1045715  system  test      kbdiag_inj_lock_holder      idle in transaction  34s   6343  -     lock table kbdiag_inj_lock in access exclusive mode;
+  1045724  system  test      kbdiag_inj_lock_waiter      active               34s   -     6343  select count(*) from kbdiag_inj_lock;
+  1045809  system  test      kbdiag_inj_idle_txn         idle in transaction  32s   6344  -     select txid_current() as kbdiag_last, pg_sleep(1);
+  1046007  system  test      kbdiag_inj_prepared_waiter  active               28s   6347  6343  lock table kbdiag_inj_2pc in access exclusive mode;
+  1046088  system  test      kbdiag_inj_long_query       active               28s   -     6343  select pg_sleep(3600);
+
+prepared: 1
+  gid             owner   database  age  xid
+  kbdiag_inj_2pc  system  test      29s  6346
+EXIT_CODE=1
 ```
 
-- 365547 超过 `--xact-warn`，但没到 `--xact-fail`（默认 1800 秒），所以是 WARN。
-- 两阶段事务只有 FAIL 一级：它会一直压着 VACUUM 的清理视界、一直拿着锁，直到有人提交或回滚。
-- `fix` 行给出处理语句。kbdiag 只打印，不执行；要先和应用确认该提交还是回滚。
-- 有 FAIL 时退出码 2。
+- `txn.long`：每个开了超过 `--xact-warn` 的事务一条，`verify` 行指向对应的会话。
+- `txn.prepared`：挂了超过 `--prepared-warn` 的两阶段事务。在有人提交或回滚之前，它一直持有锁、压着 vacuum 视界。`fix` 行给出语句，kbdiag 只打印，不执行。注释写明：先和应用确认是提交（`COMMIT PREPARED`）还是回滚，连到这个事务所在的库，在事务块外执行。
+- gid 含控制字符时，终端上显示的是转义后的文本，照抄执行匹配不到。这时不给 `fix` 行，`verify` 行提示从 `--json` 取原始 gid。
+- 两条都只报 WARN，不报 FAIL：它们的危害（表膨胀、锁长期不放）是以后的事；它们眼下挡住的会话由 [`locks`]({{< relref "/docs/reference/locks" >}}) 报。
+- 300 秒和 900 秒在服务器端没有对应的客观线。300 秒会碰上正常的批处理，批处理库可以调高。
+- 默认阈值下，idle in transaction 超过 300 秒的会话也会被 `sessions` 报成 `session.idle_in_txn`。两条回答的问题不同。
 
 ## 在备库上
 
 ```bash
-~/kbdiag txn --limit 3
+~/kbdiag txn
 echo EXIT_CODE=$?
 ```
 
 ```text
-txn  OK  (KingbaseES V008R006C009B0014, standby, system@local, 2026-09-24T04:39:05+08:00)
+txn  OK  (KingbaseES V008R006C009B0014, standby, system@local, 2026-09-27T13:37:20+08:00)
 
-session.activity: 0 rows
-pid  usename  datname  application_name  client_addr  backend_type  state  backend_xid  backend_xmin  xact_age_s  query_age_s  state_age_s  wait_event_type  wait_event  query
+oldest xid: 6354  (599825 xmin)
 
-txn.prepared: not_applicable  备库看不到主库的两阶段提交事务，请在主库上运行 kbdiag txn
+open transactions: 1
+  pid     user    database  application             state   xact  xid  xmin  sql
+  599825  system  test      kbdiag_inj_lock_waiter  active  14s   -    6354  select pg_advisory_lock(424242);
+
+txn.prepared: not_applicable  (a standby cannot see the primary's two-phase transactions: run kbdiag txn on the primary)
 EXIT_CODE=0
 ```
 
-- 主库上的两阶段事务在备库上查不到，所以备库上 `txn.prepared` 是 `not_applicable`，不算"没有"，也不影响结论。
-- 两阶段事务要在主库上看。
+备库看不到主库的两阶段事务，所以 `txn.prepared` 是 `not_applicable`。它不表示"没有"，也不影响结论。到主库上跑 `txn`。
+
+## 权限不足
+
+用没有监控角色的 `kbdiag_ro` 连接：
+
+```bash
+PGPASSWORD=... ~/kbdiag --host 127.0.0.1 -U kbdiag_ro txn
+echo EXIT_CODE=$?
+```
+
+```text
+txn  UNKNOWN  (KingbaseES V008R006C009B0014, primary, kbdiag_ro@remote, 2026-09-27T13:35:27+08:00)
+
+oldest xid: 6343  (1045715 xid, 1045724 xmin, 1046007 xmin, 1046088 xmin)
+
+open transactions: 5, 10 sessions hidden
+  pid      user    database  application                 state  xact  xid   xmin  sql
+  1045715  system  test      kbdiag_inj_lock_holder      ?      ?     6343  -     ?
+  1045724  system  test      kbdiag_inj_lock_waiter      ?      ?     -     6343  ?
+  1045809  system  test      kbdiag_inj_idle_txn         ?      ?     6344  -     ?
+  1046007  system  test      kbdiag_inj_prepared_waiter  ?      ?     6347  6343  ?
+  1046088  system  test      kbdiag_inj_long_query       ?      ?     -     6343  ?
+
+prepared: 1
+  gid             owner   database  age  xid
+  kbdiag_inj_2pc  system  test      35s  6346
+redacted: 15 rows of session.activity hide state, backend_type, client_addr, ages, wait, query (insufficient_privilege; grant sys_monitor)
+EXIT_CODE=3
+```
+
+- KingbaseES 对任何账号都显示别人会话的事务号和 xmin，所以 `oldest xid` 和开着的事务照样找得出来，只是状态、时长和 SQL 显示 `?`。
+- 既没有 xid 也没有 xmin 的遮蔽会话只计数（`10 sessions hidden`）：它们多半是 idle，不能说成事务。
+- 结论是 UNKNOWN，退出码 3。授予 `sys_monitor` 后可以看全。
+- 会话活动或两阶段事务有一项没采到时，`oldest xid` 会注明可能有更老的；一个持有者都没找到时显示 `unknown`。
 
 ## 退出码
 
 | 退出码 | 含义 |
 |---|---|
 | 0 | OK |
-| 1 | WARN |
-| 2 | FAIL |
-| 3 | UNKNOWN：有数据没采到或看不到 |
-| 64 | 参数错误 |
+| 1 | WARN：有长事务，或两阶段事务挂得太久 |
+| 3 | UNKNOWN：数据没采到或看不到 |
+| 64 | 用法错误 |
 | 69 | 连不上数据库 |
 
-[回到使用手册]({{< relref "/docs/reference" >}})
+[返回使用手册]({{< relref "/docs/reference" >}})

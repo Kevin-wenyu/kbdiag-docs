@@ -1,12 +1,10 @@
 ---
 title: "session: one session"
-description: "See what one session runs, waits on, which locks it holds, and whom it blocks or is blocked by."
+description: "One session: its full SQL, what it waits for, whom it blocks and which locks it holds."
 weight: 20
 ---
 
-Captured on 2026-09-24 (UTC+08) on a local KingbaseES V008R006C009B0014 primary, database `test`, using `~/kbdiag` built from Go source commit `0a4d61e` (static linux/amd64 binary). This is lab evidence, not production validation. The lock wait in the examples was created by a fault-injection script: 367208 holds an exclusive lock on table `kbdiag_inj_lock` without committing, and 367217 waits for it. PIDs, counts and timings belong to this capture only.
-
-The finding text is in Chinese; the tool prints it that way. The JSON fields are stable for scripts.
+Captured on 2026-09-27 (UTC+08) on a local KingbaseES V008R006C009B0014 primary, database `test`, using `~/kbdiag` built from Go source commit `93bf65d` (static linux/amd64 binary). This is lab evidence, not production validation. The sessions in the examples were created by fault-injection scripts: 1045715 holds an exclusive lock on table `kbdiag_inj_lock` idle in transaction, 1045724 waits for it, and 1045809 is a second session idle in transaction. PIDs, counts and timings belong to this capture only.
 
 ## Usage
 
@@ -21,90 +19,180 @@ kbdiag session <pid> [--lock-wait-warn SECONDS] [--idle-in-txn-warn SECONDS] [--
 | `--idle-in-txn-warn SECONDS` | WARN when idle in transaction longer than this; default 300 |
 | `--json` | Print JSON |
 
-Connection options are the same as for [`sessions`]({{< relref "/docs/reference/sessions" >}}).
+Connection options are the same as for [`sessions`]({{< relref "/docs/reference/sessions" >}}). The thresholds and findings are the same as those of `sessions` and [`locks`]({{< relref "/docs/reference/locks" >}}).
 
 ## A session waiting for a lock
 
 ```bash
-~/kbdiag session 367217
+~/kbdiag session 1045724
 echo EXIT_CODE=$?
 ```
 
 ```text
-session  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:41:05+08:00)
+session  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:35:22+08:00)
 
-[WARN] lock.waiting  会话 367217 等 public.kbdiag_inj_lock 的 AccessShareLock 已 13 秒，被 367208 挡住
-  verify: kbdiag session 367208  # 看挡路的会话在干什么
+[WARN] lock.waiting  session 1045724 has waited 35s for AccessShareLock on public.kbdiag_inj_lock, blocked by 1045715
+  verify: kbdiag session 1045715  # what the blocking session is doing
 
-lock.list: 2 rows
-pid     locktype    relation                mode             granted  wait_s  blocked_by
-367217  virtualxid  -                       ExclusiveLock    true     -       []
-367217  relation    public.kbdiag_inj_lock  AccessShareLock  false    12.9    [367208]
+session 1045724
+  user         system
+  database     test
+  application  kbdiag_inj_lock_waiter
+  client       local
+  type         client backend
+  state        active  (for 35s)
+  xact         35s
+  query        35s
+  wait         Lock:relation
+  xid / xmin   - / 6343
 
-session.activity: 1 rows
-pid     usename  datname  application_name        client_addr  backend_type    state   backend_xid  backend_xmin  xact_age_s  query_age_s  state_age_s  wait_event_type  wait_event  query
-367217  system   test     kbdiag_inj_lock_waiter  -            client backend  active  -            6022          12.9        12.9         12.9         Lock             relation    select count(*) from kbdiag_inj_lock;
+sql
+  select count(*) from kbdiag_inj_lock;
+
+waiting for: 1
+  object                  wants            waited  blocked by
+  public.kbdiag_inj_lock  AccessShareLock  35s     1045715
+
+blocking: 0
+
+holds: 0
 EXIT_CODE=1
 ```
 
-- `lock.list` holds this session's own locks. The row with `granted=false` is the lock it waits for; `blocked_by` lists the sessions blocking it directly.
-- `session.activity` is this session's activity row, with the same columns as `sessions`.
-- It has waited 13 seconds, over the default 10, so the verdict is WARN and the exit code 1. The finding says session 367217 has waited 13 seconds for an AccessShareLock on `public.kbdiag_inj_lock`, blocked by 367208; the `verify` line points at the blocker.
-- `wait_s` is an approximation: the time since the session's last state change.
+- The block at the top says who the session is (user, database, application, client, type) and what it does: its state and how long it has been in it, the transaction and statement ages, the wait event, and its transaction id and snapshot xmin.
+- `sql` is the statement in full, with its line breaks. This is the only command that shows the whole SQL. For an idle session the heading reads `last sql`, since that statement has finished.
+- `waiting for` is the lock it wants, how long it has waited and who blocks it directly.
+- It has waited 35 seconds, over the default 10, so there is a `lock.waiting` WARN and the exit code is 1. The `verify` line points at the blocker.
+- `waited` is measured from the session's last state change, so it can overstate the wait a little, never understate it.
 
 ## The blocking session
 
 ```bash
-~/kbdiag session 367208
+~/kbdiag session 1045715
 echo EXIT_CODE=$?
 ```
 
 ```text
-session  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:41:05+08:00)
+session  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:35:21+08:00)
 
-[WARN] lock.waiting  会话 367217 等 public.kbdiag_inj_lock 的 AccessShareLock 已 13 秒，被 367208 挡住
-  verify: kbdiag session 367208  # 看挡路的会话在干什么
+[WARN] lock.waiting  session 1045724 has waited 34s for AccessShareLock on public.kbdiag_inj_lock, blocked by 1045715
 
-lock.list: 4 rows
-pid     locktype       relation                mode                 granted  wait_s  blocked_by
-367208  relation       public.kbdiag_inj_lock  AccessExclusiveLock  true     -       []
-367208  transactionid  -                       ExclusiveLock        true     -       []
-367208  virtualxid     -                       ExclusiveLock        true     -       []
-367217  relation       public.kbdiag_inj_lock  AccessShareLock      false    13      [367208]
+session 1045715
+  user         system
+  database     test
+  application  kbdiag_inj_lock_holder
+  client       local
+  type         client backend
+  state        idle in transaction  (for 34s)
+  xact         34s
+  query        34s
+  wait         -
+  xid / xmin   6343 / -
 
-session.activity: 1 rows
-pid     usename  datname  application_name        client_addr  backend_type    state                backend_xid  backend_xmin  xact_age_s  query_age_s  state_age_s  wait_event_type  wait_event  query
-367208  system   test     kbdiag_inj_lock_holder  -            client backend  idle in transaction  6022         -             13.1        13.1         13.1         Client           ClientRead  lock table kbdiag_inj_lock in access exclusive mode;
+last sql
+  lock table kbdiag_inj_lock in access exclusive mode;
+
+waiting for: 0
+
+blocking: 1
+  pid      object                  wants            waited
+  1045724  public.kbdiag_inj_lock  AccessShareLock  34s
+
+holds: 1
+  object                  mode
+  public.kbdiag_inj_lock  AccessExclusiveLock
 EXIT_CODE=1
 ```
 
-- For a blocker, `lock.list` also shows the locks of the sessions it blocks (the last row, 367217).
-- The blocker is idle in transaction: it holds the lock, its transaction is open, and it runs nothing. This is the usual shape of an application that forgot to commit.
-- It would only get its own `session.idle_in_txn` after 300 seconds; the WARN here comes from 367217, which it blocks.
+- `blocking` lists the sessions waiting for locks this session holds. `holds` lists its locks.
+- Every transaction holds its own `virtualxid` and `transactionid` locks; they are left out of `holds` unless someone waits for a lock of that type. The xid is in the block at the top.
+- A row lock is labelled with its type, for example `public.t (tuple)`, so it is not read as a table lock.
+- The WARN is the waiter's `lock.waiting`: it says this session has been blocking another for 34 seconds, which is this session's problem. It has no `verify` line, since it would point back here.
+- The session has been idle in transaction for 34 seconds: it took the lock and never committed. Its own `session.idle_in_txn` would come at 300 seconds.
 
-`--json` prints the same content. The `evidence` of `lock.waiting` carries `waiter_pid`, `blocker_pids`, `relation`, `lock_mode` and `wait_s` for scripts:
+## Idle in transaction
 
-```json
-{
-  "id": "lock.waiting",
-  "level": "WARN",
-  "symptom": "会话 367217 等 public.kbdiag_inj_lock 的 AccessShareLock 已 13 秒，被 367208 挡住",
-  "evidence": [
-    {
-      "probe_id": "lock.list",
-      "fields": {
-        "blocker_pids": [367208],
-        "lock_mode": "AccessShareLock",
-        "relation": "public.kbdiag_inj_lock",
-        "wait_s": 13.1,
-        "waiter_pid": 367217
-      }
-    }
-  ],
-  "cause": null,
-  "next": [{"kind": "verify", "command": "kbdiag session 367208", "note": "看挡路的会话在干什么"}]
-}
+With the threshold lowered to 10 seconds:
+
+```bash
+~/kbdiag session 1045809 --idle-in-txn-warn 10
+echo EXIT_CODE=$?
 ```
+
+```text
+session  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:35:23+08:00)
+
+[WARN] session.idle_in_txn  session 1045809 has been idle in transaction for 32s
+
+session 1045809
+  user         system
+  database     test
+  application  kbdiag_inj_idle_txn
+  client       local
+  type         client backend
+  state        idle in transaction  (for 33s)
+  xact         35s
+  query        34s
+  wait         -
+  xid / xmin   6344 / -
+
+last sql
+  select txid_current() as kbdiag_last, pg_sleep(1);
+
+waiting for: 0
+
+blocking: 0
+
+holds: 0
+EXIT_CODE=1
+```
+
+The session has a transaction id but holds no lock others want, so `holds` is empty. What it holds back is the vacuum horizon; see [`txn`]({{< relref "/docs/reference/txn" >}}).
+
+## Insufficient privilege
+
+Connect as `kbdiag_ro`, which has no monitoring role, and look at the blocker:
+
+```bash
+PGPASSWORD=... ~/kbdiag --host 127.0.0.1 -U kbdiag_ro session 1045715
+echo EXIT_CODE=$?
+```
+
+```text
+session  UNKNOWN  (KingbaseES V008R006C009B0014, primary, kbdiag_ro@remote, 2026-09-27T13:35:28+08:00)
+
+session 1045715
+  user         system
+  database     test
+  application  kbdiag_inj_lock_holder
+  client       ?
+  type         ?
+  state        ?
+  xact         ?
+  query        ?
+  wait         ?
+  xid / xmin   6343 / -
+
+sql
+  ?
+
+waiting for: 0
+
+blocking: 1
+  pid      object                  wants            waited
+  1045724  public.kbdiag_inj_lock  AccessShareLock  ?
+
+holds: 1
+  object                  mode
+  public.kbdiag_inj_lock  AccessExclusiveLock
+redacted: 1 row of session.activity hides state, backend_type, client_addr, ages, wait, query (insufficient_privilege; grant sys_monitor)
+redacted: 1 row of lock.list hides wait (insufficient_privilege; grant sys_monitor)
+EXIT_CODE=3
+```
+
+- User, database and application are visible, and so are the transaction id and xmin. State, times, client, type, wait and SQL show `?`.
+- Locks and who blocks whom are visible; how long the other session has waited is not.
+- The session cannot be judged, so the verdict is UNKNOWN with exit code 3. Grant `sys_monitor` to see everything.
 
 ## No such session
 
@@ -115,26 +203,54 @@ echo EXIT_CODE=$?
 
 ```text
 kbdiag: no session with pid 999999 (it may have ended)
-session  UNKNOWN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:38:55+08:00)
+session  UNKNOWN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:34:46+08:00)
 
-lock.list: 0 rows
-pid  locktype  relation  mode  granted  wait_s  blocked_by
-
-session.activity: 0 rows
-pid  usename  datname  application_name  client_addr  backend_type  state  backend_xid  backend_xmin  xact_age_s  query_age_s  state_age_s  wait_event_type  wait_event  query
+session 999999: not found (it may have ended)
 EXIT_CODE=3
 ```
 
-- When the PID is not found (it may have ended), a note goes to standard error, the verdict is UNKNOWN and the exit code 3.
-- Omitting the PID is a usage error, exit code 64.
+When the PID is not found (it may have ended), a note goes to standard error, the verdict is UNKNOWN and the exit code 3. Omitting the PID is a usage error, exit code 64.
+
+## JSON
+
+`--json` carries the activity row and the lock rows the text is built from, with raw values: times in seconds and every lock row, including `virtualxid`. The `lock.waiting` finding of the waiter above, with the fields scripts can use:
+
+```json
+{
+  "id": "lock.waiting",
+  "level": "WARN",
+  "symptom": "session 1045724 has waited 37s for AccessShareLock on public.kbdiag_inj_lock, blocked by 1045715",
+  "evidence": [
+    {
+      "probe_id": "lock.list",
+      "fields": {
+        "blocker_pids": [
+          1045715
+        ],
+        "lock_mode": "AccessShareLock",
+        "relation": "public.kbdiag_inj_lock",
+        "wait_s": 37.3,
+        "waiter_pid": 1045724
+      }
+    }
+  ],
+  "cause": null,
+  "next": [
+    {
+      "kind": "verify",
+      "command": "kbdiag session 1045715",
+      "note": "what the blocking session is doing"
+    }
+  ]
+}
+```
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | 0 | OK |
-| 1 | WARN |
-| 2 | FAIL |
+| 1 | WARN: a lock wait or idle in transaction over its threshold |
 | 3 | UNKNOWN: no such session, or data not collected or not visible |
 | 64 | Usage error |
 | 69 | Cannot connect |

@@ -8,27 +8,26 @@ Start with the question you need to answer. Examples assume the binary is at `~/
 
 ## Instance {#instance}
 
-**What is this instance, and are connections running out?**
+**What is this instance, and do its basics hold?**
 
 ```bash
 ~/kbdiag status
 ```
 
-Version, role (primary / standby), uptime, database sizes, how many downstreams it sends WAL to, and connections. Connections are measured against what ordinary users may open (`max_connections` less `superuser_reserved_connections`): WARN at 80%, FAIL at 100%, adjustable with `--conn-warn` / `--conn-fail`.
+Version, role (primary / standby), uptime, connections, which standbys it sends WAL to or where a standby receives WAL from, database sizes, and the disk holding the data directory. FAIL when every connection ordinary users may open is taken (`max_connections` less `superuser_reserved_connections`); WARN when a standby is not receiving WAL.
 
 → [status]({{< relref "/docs/reference/status" >}})
 
 ## Sessions {#sessions}
 
-**Who is connected, who is sitting idle in transaction, and what is one session doing?**
+**Who holds the connections, which sessions are doing something, and what is one session doing?**
 
 ```bash
 ~/kbdiag sessions
-~/kbdiag sessions --active
 ~/kbdiag session <pid>
 ```
 
-`sessions` lists every session, longest transaction first, and warns about sessions idle in transaction for more than 300 seconds. `session <pid>` shows one session's activity, the locks it holds and whom it blocks or is blocked by.
+`sessions` counts the connections by user, database, application and client, then lists the client sessions that are not idle, longest transaction first. It warns about sessions idle in transaction for more than 300 seconds. `session <pid>` shows one session in full: who it is, its whole SQL, the lock it waits for and who blocks it, whom it blocks and what it holds.
 
 → [sessions]({{< relref "/docs/reference/sessions" >}}) · [session]({{< relref "/docs/reference/session" >}})
 
@@ -40,19 +39,19 @@ Version, role (primary / standby), uptime, database sizes, how many downstreams 
 ~/kbdiag locks
 ```
 
-Each waiting session gets its own finding naming its direct blocker, WARN after 10 seconds. The `verify` line points to the blocker's `session`. When a chain is several sessions long, follow it one hop at a time.
+The blockers come first, the one blocking the most sessions at the top, then every waiting session, longest wait first. Each wait over 10 seconds is a WARN naming its direct blocker, and the `verify` line points to the blocker's `session`. When a chain is several sessions long, follow it one hop at a time.
 
 → [locks]({{< relref "/docs/reference/locks" >}}) · [Scenario: lock waits]({{< relref "/docs/scenarios/lock-waits" >}})
 
 ## Transactions {#txn}
 
-**Which transaction has been open too long, and is a prepared (2PC) transaction forgotten?**
+**Who holds back the vacuum horizon: a transaction open too long, or a forgotten prepared (2PC) transaction?**
 
 ```bash
 ~/kbdiag txn
 ```
 
-Open transactions WARN at 300 seconds and FAIL at 1800; prepared transactions FAIL at 900 seconds, with a `ROLLBACK PREPARED` / `COMMIT PREPARED` suggestion printed for you to decide. Prepared transactions live on the primary; on a standby they are reported as not applicable.
+The oldest transaction id first, with the sessions or prepared transaction holding it, then the open transactions and prepared ones. Open transactions WARN at 300 seconds and prepared transactions at 900, with a `ROLLBACK PREPARED` / `COMMIT PREPARED` suggestion printed for you to decide. Prepared transactions live on the primary; on a standby they are reported as not applicable.
 
 → [txn]({{< relref "/docs/reference/txn" >}})
 
@@ -64,7 +63,7 @@ Open transactions WARN at 300 seconds and FAIL at 1800; prepared transactions FA
 ~/kbdiag waits
 ```
 
-Sessions grouped by wait event and state, with their PIDs. It summarizes without thresholds; use `locks` for how long and on whom.
+The sessions doing something, grouped by wait event and state with their PIDs, biggest pile first. Idle sessions and background processes idling in their main loop are only counted. It summarizes without thresholds; use `locks` for how long and on whom.
 
 → [waits]({{< relref "/docs/reference/waits" >}}) · [Scenario: long-running SQL]({{< relref "/docs/scenarios/slow-sql" >}})
 
@@ -76,7 +75,7 @@ Sessions grouped by wait event and state, with their PIDs. It summarizes without
 ~/kbdiag slots
 ```
 
-An inactive slot keeps WAL and, with an `xmin`, holds back vacuum, so it is a FAIL at once. The `verify` line sends you to the standby to check whether it is alive. kbdiag never drops a slot.
+Each slot with its consumer, the WAL it keeps and its `xmin`. An inactive slot keeps WAL and, with an `xmin`, holds back vacuum, so it is a WARN at once. The `verify` line sends you to `status` on the slot's downstream node to check whether it still receives WAL. kbdiag never drops a slot.
 
 → [slots]({{< relref "/docs/reference/slots" >}})
 

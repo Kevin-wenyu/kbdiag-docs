@@ -39,15 +39,15 @@ echo $?                  # 0 OK, 1 WARN, 2 FAIL, 3 UNKNOWN
 
 | Command | What it shows | Flags |
 |---|---|---|
-| `status` | Version, role, uptime, connections, database sizes, downstream count; WARN/FAIL when connections near the limit | `--conn-warn P`, `--conn-fail P` |
-| `sessions` | All sessions; WARN on long idle in transaction | `--active`, `--limit N`, `--idle-in-txn-warn S` |
-| `session <pid>` | One session: its activity, its locks, whom it blocks or is blocked by | `--lock-wait-warn S`, `--idle-in-txn-warn S` |
-| `locks` | Lock waits and their direct blockers; WARN on long waits | `--limit N`, `--lock-wait-warn S` |
-| `txn` | Open transactions and prepared (2PC) ones; WARN/FAIL on old ones | `--limit N`, `--xact-warn S`, `--xact-fail S`, `--prepared-fail S` |
-| `waits` | Sessions grouped by wait event and state | |
-| `slots` | Replication slots; FAIL on inactive ones | |
+| `status` | Version, data directory, port, role; each standby (on a primary) or the WAL upstream (on a standby); uptime, connections used / usable, database sizes, disk of the data directory (local runs only). FAIL when ordinary users can no longer connect; WARN when a standby is not receiving WAL | |
+| `sessions` | Who holds the connections (counted by user, database, application, client), then the client sessions that are not idle, longest transaction first; WARN on long idle in transaction. JSON always carries every session | `--all`, `--limit N`, `--idle-in-txn-warn S` |
+| `session <pid>` | One session: who and what it is, its full SQL, the lock it waits for and who blocks it, whom it blocks, what it holds | `--lock-wait-warn S`, `--idle-in-txn-warn S` |
+| `locks` | Who blocks the most (and what it holds), then every lock wait, longest first, with its direct blockers; WARN on long waits | `--limit N`, `--lock-wait-warn S` |
+| `txn` | The oldest xid holding back vacuum and who holds it, open transactions, prepared (2PC) ones; WARN on old ones | `--limit N`, `--xact-warn S`, `--prepared-warn S` |
+| `waits` | What the sessions doing something wait on, grouped by wait event and state, biggest pile first; idle sessions and background processes only counted | |
+| `slots` | Replication slots, inactive ones and the ones keeping the most WAL first; WARN on inactive ones | |
 
-Defaults: connections 80% (WARN) / 100% (FAIL) of what ordinary users may open (`max_connections` less `superuser_reserved_connections`), idle in transaction 300 s, lock wait 10 s, transaction 300 s (WARN) / 1800 s (FAIL), prepared transaction 900 s (FAIL). `--limit` only trims what is shown; findings always cover every row.
+Defaults: idle in transaction 300 s, lock wait 10 s, transaction 300 s, prepared transaction 900 s, all WARN. `--limit` only trims what is shown; findings always cover every row.
 
 ## Connection
 
@@ -65,20 +65,23 @@ The password comes from `PGPASSWORD` or `~/.pgpass`. Every connection is a read-
 ## Output
 
 ```text
-locks  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:38:53+08:00)
+locks  WARN  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-26T19:41:41+08:00)
 
-[WARN] lock.waiting  会话 364818 等 public.kbdiag_inj_lock 的 AccessShareLock 已 14 秒，被 364809 挡住
-  verify: kbdiag session 364809  # 看挡路的会话在干什么
+[WARN] lock.waiting  session 803890 has waited 14s for AccessShareLock on public.kbdiag_inj_lock, blocked by 803881
+  verify: kbdiag session 803881  # what the blocking session is doing
 
-lock.list: 2 rows
-pid     locktype  relation                mode                 granted  wait_s  blocked_by
-364809  relation  public.kbdiag_inj_lock  AccessExclusiveLock  true     -       []
-364818  relation  public.kbdiag_inj_lock  AccessShareLock      false    13.8    [364809]
+blockers: 1
+  pid     blocks  holds
+  803881  1       public.kbdiag_inj_lock AccessExclusiveLock
+
+waiting: 1
+  pid     object                  wants            waited  blocked by
+  803890  public.kbdiag_inj_lock  AccessShareLock  14s     803881
 ```
 
 - First line: command, verdict, and context (version, role, user@location, collection time).
-- Findings: an id, a symptom (in Chinese), and a `verify` or `fix` next step.
-- Data: one table per probe; `-` is null. `--json` gives the same content with stable field names.
+- Findings: an id, a symptom, and a `verify` or `fix` next step.
+- Data: laid out for reading, sizes and durations in readable units; `-` is null, `?` is hidden from this account. `--json` gives every probe's raw table (bytes, seconds) with stable field names.
 
 ## Exit codes
 
