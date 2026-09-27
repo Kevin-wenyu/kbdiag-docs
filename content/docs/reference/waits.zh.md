@@ -1,10 +1,10 @@
 ---
 title: "waits：等待事件"
-description: "按等待事件和状态汇总会话，看此刻大家在等什么。"
+description: "此刻在干活的会话在等什么，扎堆最多的在前。"
 weight: 50
 ---
 
-采集于 2026-09-24（UTC+08），本地 KingbaseES V008R006C009B0014 主节点，数据库 `test`。工具是 Go 版源码提交 `0a4d61e` 编译的 `~/kbdiag`（linux/amd64 静态二进制）。这是测试环境实测，不代表生产环境验收。示例里有一个锁等待是故障注入脚本造出来的：364809 拿着表锁 idle in transaction，364818 等它。PID、计数与时间只属于本次采样。
+采集于 2026-09-27（UTC+08），本地 KingbaseES V008R006C009B0014 主节点和备节点，数据库 `test`。工具是 Go 版源码提交 `93bf65d` 编译的 `~/kbdiag`（linux/amd64 静态二进制）。这是测试环境实测，不代表生产环境验收。示例里的会话是故障注入脚本造出来的：两个 idle in transaction 的会话、两个在等表锁的会话、一个 `pg_sleep(3600)`。PID、计数与时间只属于本次采样。
 
 ## 用法
 
@@ -12,7 +12,7 @@ weight: 50
 kbdiag waits [--json]
 ```
 
-没有命令自己的参数。连接参数和 [`sessions`]({{< relref "/docs/reference/sessions" >}}) 相同。
+没有自己的参数。连接参数和 [`sessions`]({{< relref "/docs/reference/sessions" >}}) 相同。
 
 ## 默认输出
 
@@ -22,62 +22,96 @@ echo EXIT_CODE=$?
 ```
 
 ```text
-waits  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T04:38:54+08:00)
+waits  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:35:18+08:00)
 
-wait.summary: 10 rows
-wait_event_type  wait_event           state                sessions  pids
-Client           ClientRead           idle                 3         [3294 179417 222736]
-Activity         KshMain              idle                 2         [3279 3280]
-Activity         AutoVacuumMain       -                    1         [3274]
-Activity         BgWriterHibernate    -                    1         [3272]
-Activity         CheckpointerMain     -                    1         [3271]
-Activity         LogicalLauncherMain  -                    1         [3281]
-Activity         WalSenderMain        active               1         [364531]
-Activity         WalWriterMain        -                    1         [3273]
-Client           ClientRead           idle in transaction  1         [364809]
-Lock             relation             active               1         [364818]
+not idle: 5
+  wait               state                sessions  pids
+  Lock:relation      active               2         1045724 1046007
+  Client:ClientRead  idle in transaction  2         1045715 1045809
+  Timeout:PgSleep    active               1         1046088
+
+not shown: 3 idle, 8 background
 EXIT_CODE=0
 ```
 
-- 每行是一个（等待事件类型、等待事件、状态）组合，`sessions` 是会话数，`pids` 是这些会话的 PID，按会话数从多到少排。
-- 没在等的会话（等待事件为空）也按状态归组，所以这张表覆盖除 kbdiag 自己的连接以外的全部会话。
-- `waits` 只汇总，不按阈值判定：全部会话都看得见就是 OK，有看不到的会话就是 UNKNOWN（见下文）。示例里 `Lock / relation` 那一行就是 364818 在等锁；要看等了多久、被谁挡住，用 [`locks`]({{< relref "/docs/reference/locks" >}})。
+- `not idle` 把在干活的会话按等待事件和状态分组，`sessions` 是个数，`pids` 列出是哪些。人数最多的组在前，因为要找的就是扎堆；人数相同时 `active` 在前。
+- `Lock:relation`：两个会话在等表锁；谁挡的、等了多久看 [`locks`]({{< relref "/docs/reference/locks" >}})。
+- `Client:ClientRead` 加 `idle in transaction`：会话开着事务，在等客户端发下一条语句。
+- `Timeout:PgSleep` 是注入的 `pg_sleep`。active 却没有等待事件的会话写 `(running)`：在 CPU 上，或者这段代码没有埋点。
+- `pids` 最多列 10 个，其余写 `... (+N)`，`--json` 里是全的。
+- `not shown` 给不列出来的计数：`idle` 的会话不回答"卡在哪"；后台进程在主循环里空闲（任何 `Activity` 类等待，比如没东西可发的 walsender、两次 checkpoint 之间的 checkpointer）也不回答。后台进程卡在真正的等待上（比如 checkpointer 等 `IO:DataFileSync`）照样列出，状态写 `(background)`。
 
-## 权限不足时
+没有阈值，也没有参数：同样是 10 个会话等 IO，对一个库是事故，对另一个库是常态，所以 waits 只报告不判定。等锁太久由 `locks` 判。
 
-用没有监控角色的账号 `kbdiag_ro` 远程连接：
+空闲的主库：
 
 ```bash
-PGPASSWORD=... ~/kbdiag waits --host 127.0.0.1 -U kbdiag_ro
+~/kbdiag waits
 echo EXIT_CODE=$?
 ```
 
 ```text
-waits  UNKNOWN  (KingbaseES V008R006C009B0014, primary, kbdiag_ro@remote, 2026-09-24T04:41:05+08:00)
+waits  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:34:44+08:00)
 
-wait.summary: 2 rows
-wait_event_type  wait_event     state   sessions  pids
--                -              -       12        [3271 3272 3273 3274 3279 3280 3281 3294 179417 222736 36...
-Activity         WalSenderMain  active  1         [366619]
+not idle: 0
 
-redacted: wait.summary.wait_event_type in 12 rows (insufficient_privilege)
-redacted: wait.summary.wait_event in 12 rows (insufficient_privilege)
-redacted: wait.summary.state in 12 rows (insufficient_privilege)
+not shown: 3 idle, 8 background
+EXIT_CODE=0
+```
+
+主库忙的时候，追赶中的 walsender 可能以 `IO:WALRead` 之类的等待出现，属正常。
+
+## 在备库上
+
+```bash
+~/kbdiag waits
+echo EXIT_CODE=$?
+```
+
+```text
+waits  OK  (KingbaseES V008R006C009B0014, standby, system@local, 2026-09-27T13:37:21+08:00)
+
+not idle: 1
+  wait           state   sessions  pids
+  Lock:advisory  active  1         599825
+
+not shown: 3 idle, 4 background
+EXIT_CODE=0
+```
+
+## 权限不足
+
+用没有监控角色的 `kbdiag_ro` 连接：
+
+```bash
+PGPASSWORD=... ~/kbdiag --host 127.0.0.1 -U kbdiag_ro waits
+echo EXIT_CODE=$?
+```
+
+```text
+waits  UNKNOWN  (KingbaseES V008R006C009B0014, primary, kbdiag_ro@remote, 2026-09-27T13:35:27+08:00)
+
+not idle: 0
+
+not shown: 1 background, 15 hidden (state unknown)
+redacted: 15 rows of wait.summary hide wait, state (insufficient_privilege; grant sys_monitor)
 EXIT_CODE=3
 ```
 
-- 看不到的会话等待事件和状态都是空，归到三个字段都为空的那一行（这里 12 个）；`redacted` 说明这是权限造成的，不是它们真的没在等。
-- 有看不到的会话，就不能说"没有异常等待"，所以结论是 UNKNOWN，退出码 3。
-- 文本输出里过长的单元格会被截断（结尾 `...`）；`--json` 给出完整的 PID 列表。
-- 授予 `sys_monitor` 角色后可以看到完整信息。
+- 别的用户的会话看不到等待事件和状态，不知道是不是 idle，所以计成 `hidden (state unknown)`，不算作 idle。关了 `track_activities` 的会话出于同样原因计成 `untracked (state unknown)`。
+- 有看不到的会话，kbdiag 就不能说没人在等，所以结论是 UNKNOWN，退出码 3。授予 `sys_monitor` 后可以看全。
+
+## JSON
+
+`--json` 包含所有分组（包括 idle 和后台进程的），PID 列表是全的：`wait_event_type`、`wait_event`、`state`、`sessions`、`pids`。
 
 ## 退出码
 
 | 退出码 | 含义 |
 |---|---|
 | 0 | OK |
-| 3 | UNKNOWN：有数据没采到或看不到 |
-| 64 | 参数错误 |
+| 3 | UNKNOWN：数据没采到或看不到 |
+| 64 | 用法错误 |
 | 69 | 连不上数据库 |
 
-[回到使用手册]({{< relref "/docs/reference" >}})
+[返回使用手册]({{< relref "/docs/reference" >}})

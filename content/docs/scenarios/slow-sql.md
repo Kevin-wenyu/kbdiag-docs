@@ -4,52 +4,70 @@ description: "Find a statement that has been running for a while and see what it
 weight: 10
 ---
 
-Captured on 2026-09-24 (UTC+08) on a local KingbaseES V008R006C009B0014 primary, database `test`, using `~/kbdiag` built from Go source commit `6803c61` (static linux/amd64 binary). This is lab evidence, not production validation. PIDs, counts and timings belong to this capture only. A fault-injection script started `select pg_sleep(3600);`, a statement that only sleeps. It tests detection, not CPU or disk pressure.
+Captured on 2026-09-27 (UTC+08) on a local KingbaseES V008R006C009B0014 primary, database `test`, using `~/kbdiag` built from Go source commit `93bf65d` (static linux/amd64 binary). This is lab evidence, not production validation. PIDs, counts and timings belong to this capture only. A fault-injection script started `select pg_sleep(3600);`, a statement that only sleeps. It tests detection, not CPU or disk pressure.
 
 kbdiag 2.0 has no slow-SQL threshold yet: a long statement is listed and sorted, but not a WARN on its own. It becomes a finding when it holds a transaction open too long (`txn`) or makes others wait for a lock (`locks`).
 
 ## 1. What is running?
 
 ```bash
-~/kbdiag sessions --active
+~/kbdiag sessions
 echo EXIT_CODE=$?
 ```
 
 ```text
-sessions  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T10:20:14+08:00)
+sessions  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:36:49+08:00)
 
-session.activity: 2 rows
-pid     usename  datname  application_name       client_addr     backend_type    state   backend_xid  backend_xmin  xact_age_s  query_age_s  state_age_s  wait_event_type  wait_event     query
-436010  system   test     kbdiag_inj_long_query  -               client backend  active  -            6101          9           9            9            Timeout          PgSleep        select pg_sleep(3600);
-407405  esrep    -        node2                  192.168.105.11  walsender       active  -            -             -           -            10050.7      Activity         WalSenderMain  
+connected: 4 client sessions (not counting kbdiag), 1 walsender, 7 background
+  count  user    database  application            client
+  2      esrep   esrep     internal_rwcmgr        192.168.105.10
+  1      esrep   esrep     internal_rwcmgr        192.168.105.11
+  1      system  test      kbdiag_inj_long_query  local
+
+not idle: 1
+  pid      user    database  application            client  state   xact  query  wait             sql
+  1049328  system  test      kbdiag_inj_long_query  local   active  13s   13s    Timeout:PgSleep  select pg_sleep(3600);
 EXIT_CODE=0
 ```
 
-- `--active` shows only sessions whose state is `active`; the verdict still covers every session.
-- Sessions are sorted by transaction age, longest first: 436010 has run `select pg_sleep(3600);` for 9 seconds. `query_age_s` is how long the current statement has been running.
-- The `walsender` row is replication to the standby; it is always active and has no transaction, so it sorts after client sessions.
+- `connected` counts the client sessions by user, database, application and client; walsenders and background processes are only counted (`--all` lists them).
+- `not idle` lists the sessions doing something or holding a transaction open, longest transaction first. 1049328 has run `select pg_sleep(3600);` for 13 seconds. `query` is how long the current statement has been running; `wait` is what it waits on.
+- The `sql` column is cut at 60 characters; `session <pid>` shows the full text.
 
 ## 2. What is it waiting on?
 
 ```bash
-~/kbdiag session 436010
+~/kbdiag session 1049328
 echo EXIT_CODE=$?
 ```
 
 ```text
-session  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T10:20:14+08:00)
+session  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:36:50+08:00)
 
-lock.list: 1 rows
-pid     locktype    relation  mode           granted  wait_s  blocked_by
-436010  virtualxid  -         ExclusiveLock  true     -       []
+session 1049328
+  user         system
+  database     test
+  application  kbdiag_inj_long_query
+  client       local
+  type         client backend
+  state        active  (for 14s)
+  xact         14s
+  query        14s
+  wait         Timeout:PgSleep
+  xid / xmin   - / 6353
 
-session.activity: 1 rows
-pid     usename  datname  application_name       client_addr  backend_type    state   backend_xid  backend_xmin  xact_age_s  query_age_s  state_age_s  wait_event_type  wait_event  query
-436010  system   test     kbdiag_inj_long_query  -            client backend  active  -            6101          9.5         9.5          9.5          Timeout          PgSleep     select pg_sleep(3600);
+sql
+  select pg_sleep(3600);
+
+waiting for: 0
+
+blocking: 0
+
+holds: 0
 EXIT_CODE=0
 ```
 
-`Timeout / PgSleep` says the statement is sleeping on purpose. It holds only its own `virtualxid` lock and blocks nobody. For a real statement you would see `IO` (reading data), `Lock` (waiting for another session), or no wait event at all (running on CPU).
+`Timeout:PgSleep` says the statement is sleeping on purpose. It waits for nobody, blocks nobody and holds no lock worth showing (every transaction's own `virtualxid` lock is left out). For a real statement you would see `IO` (reading data), `Lock` (waiting for another session), or no wait event at all (running on CPU).
 
 ## 3. Is it one statement or many?
 
@@ -59,23 +77,17 @@ echo EXIT_CODE=$?
 ```
 
 ```text
-waits  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-24T10:20:15+08:00)
+waits  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:36:51+08:00)
 
-wait.summary: 9 rows
-wait_event_type  wait_event           state   sessions  pids
-Client           ClientRead           idle    3         [3294 179417 222736]
-Activity         KshMain              idle    2         [3279 3280]
-Activity         AutoVacuumMain       -       1         [3274]
-Activity         BgWriterHibernate    -       1         [3272]
-Activity         CheckpointerMain     -       1         [3271]
-Activity         LogicalLauncherMain  -       1         [3281]
-Activity         WalSenderMain        active  1         [407405]
-Activity         WalWriterMain        -       1         [3273]
-Timeout          PgSleep              active  1         [436010]
+not idle: 1
+  wait             state   sessions  pids
+  Timeout:PgSleep  active  1         1049328
+
+not shown: 3 idle, 8 background
 EXIT_CODE=0
 ```
 
-`waits` groups every session by wait event and state. One `Timeout / PgSleep` session among idle clients and background processes means a single statement, not a pile-up. When dozens of sessions share one wait event, that event is where to look.
+`waits` groups the sessions that are doing something by wait event and state. One `Timeout:PgSleep` session means a single statement, not a pile-up; the idle sessions and idle background processes are only counted. When dozens of sessions share one wait event, that event is where to look.
 
 ## 4. Decide
 

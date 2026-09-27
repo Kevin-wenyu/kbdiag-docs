@@ -58,7 +58,7 @@ echo "exit code: $?"
 echo "exit code: $?"
 ```
 
-`$?` 要紧跟在命令后面读，下一条命令会覆盖它。`status` 告诉你这是个什么实例、基本面是否正常：连接、复制、磁盘；`sessions` 列出所有连着的会话，并对停在 idle in transaction 的会话报警。
+`$?` 要紧跟在命令后面读，下一条命令会覆盖它。`status` 告诉你这是个什么实例、基本面是否正常：连接、复制、磁盘；`sessions` 告诉你连接是谁占的、哪些会话在干活，并对停在 idle in transaction 的会话报警。
 
 ## 5. 读懂结论和退出码 {#exit-codes}
 
@@ -67,8 +67,8 @@ echo "exit code: $?"
 | 退出码 | 结论 | 下一步 |
 |---|---|---|
 | `0` | OK | 这次采样里没有越过阈值的 |
-| `1` | WARN | 逐条看 finding，跑它的 `verify` 命令 |
-| `2` | FAIL | 同上，而且要更快：已经坏了或马上要坏 |
+| `1` | WARN | 还没坏，但放着不管会出事：逐条看 finding，跑它的 `verify` 命令 |
+| `2` | FAIL | 同上，而且现在就要处理：业务已经受影响 |
 | `3` | UNKNOWN | 有东西没采到或看不到；查权限和 `redacted` 列表 |
 | `64` | 参数错误 | 检查命令和参数 |
 | `69` | 连不上 | 先解决连接；这次什么都没看 |
@@ -83,10 +83,10 @@ WARN 或 FAIL 的 finding 优先于 UNKNOWN：在看得到的范围里发现了�
 |---|---|---|
 | 锁等待 | `~/kbdiag session <挡路者 pid>` | 挡路者在干什么、事务开了多久 |
 | idle in transaction | `~/kbdiag session <pid>` | 它持有哪些锁、有没有挡住别人 |
-| 老事务或两阶段事务 | `~/kbdiag txn` | 事务时长，两阶段事务的 gid 和 owner |
+| 老事务或两阶段事务 | `~/kbdiag txn` | 最老的事务号和谁持有它，事务时长，两阶段事务的 gid 和 owner |
 | 很多会话在等 | `~/kbdiag waits` | 它们等的是不是同一个事件 |
-| 连接占满 | `~/kbdiag sessions --limit 0` | 按用户、应用名、客户端地址看有没有扎堆 |
-| 未激活的槽 | 在备库上跑 `~/kbdiag sessions` | 备库是否在线、有没有 `walreceiver` |
+| 连接占满 | `~/kbdiag sessions` | 最上面的汇总：按用户、库、应用、客户端看有没有扎堆 |
+| 未激活的槽 | 在这个槽的下游节点上跑 `~/kbdiag status` | 连不连得上、`inst.upstream` 是不是 `streaming`、`last_msg` 是否一直在涨 |
 
 每条 finding 的 `verify` 行已经给出了对应的那一条。
 

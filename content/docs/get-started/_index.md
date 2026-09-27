@@ -58,7 +58,7 @@ echo "exit code: $?"
 echo "exit code: $?"
 ```
 
-Read `$?` right after the command; the next command replaces it. `status` tells you what the instance is and whether its basics hold: connections, replication, disk. `sessions` lists everyone connected and warns about sessions left idle in transaction.
+Read `$?` right after the command; the next command replaces it. `status` tells you what the instance is and whether its basics hold: connections, replication, disk. `sessions` shows who holds the connections and which sessions are doing something, and warns about sessions left idle in transaction.
 
 ## 5. Read the verdict and exit code {#exit-codes}
 
@@ -67,8 +67,8 @@ The first line of every report carries the verdict, and the exit code says the s
 | Exit code | Verdict | Next step |
 |---|---|---|
 | `0` | OK | Nothing crossed a threshold in this sample |
-| `1` | WARN | Read each finding and run its `verify` command |
-| `2` | FAIL | Same, sooner: something is already broken or about to be |
+| `1` | WARN | Nothing is broken yet, but it will be if left alone: read each finding and run its `verify` command |
+| `2` | FAIL | Same, now: the application is already affected |
 | `3` | UNKNOWN | Something could not be collected or seen; check privileges and the `redacted` list |
 | `64` | Usage error | Check the command and flags |
 | `69` | Cannot connect | Check the connection first; nothing was looked at |
@@ -83,10 +83,10 @@ A WARN or FAIL finding wins over UNKNOWN: if kbdiag found a problem in what it c
 |---|---|---|
 | A lock wait | `~/kbdiag session <blocker pid>` | What the blocker is doing and how long its transaction has been open |
 | Idle in transaction | `~/kbdiag session <pid>` | The locks it holds and whether it blocks anyone |
-| An old or prepared transaction | `~/kbdiag txn` | Transaction age, the prepared transaction's gid and owner |
+| An old or prepared transaction | `~/kbdiag txn` | The oldest xid and who holds it, transaction age, the prepared transaction's gid and owner |
 | Many sessions waiting | `~/kbdiag waits` | Which wait event they share |
-| Connections used up | `~/kbdiag sessions --limit 0` | A pile-up by user, application or client address |
-| An inactive slot | `~/kbdiag sessions` on the standby | Whether it is up and has a `walreceiver` |
+| Connections used up | `~/kbdiag sessions` | The summary at the top: a pile-up by user, database, application or client |
+| An inactive slot | `~/kbdiag status` on the slot's downstream node | Whether it answers, whether `inst.upstream` is `streaming`, and whether `last_msg` keeps growing |
 
 Each finding already prints the right one of these as its `verify` line.
 

@@ -4,7 +4,7 @@ description: "这是个什么实例、基本面是否正常：角色、复制、
 weight: 60
 ---
 
-采集于 2026-09-26（UTC+08），本地 KingbaseES V008R006C009B0014 主节点和备节点，数据库 `test`。工具是 Go 版源码提交 `571d8b2` 编译的 `~/kbdiag`（linux/amd64 静态二进制）。这是测试环境实测，不代表生产环境验收。FAIL 的例子由故障注入脚本造出来，它把普通用户可用的连接全部占满。数值只属于本次采样。
+采集于 2026-09-27（UTC+08），本地 KingbaseES V008R006C009B0014 主节点和备节点，数据库 `test`。工具是 Go 版源码提交 `93bf65d` 编译的 `~/kbdiag`（linux/amd64 静态二进制）。这是测试环境实测，不代表生产环境验收。FAIL 的例子由故障注入脚本造出来，它把普通用户可用的连接全部占满。数值只属于本次采样。
 
 ## 用法
 
@@ -29,13 +29,13 @@ echo EXIT_CODE=$?
 ```
 
 ```text
-status  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-26T19:19:05+08:00)
+status  OK  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:34:42+08:00)
 
 inst.info
   version         V008R006C009B0014
   data_directory  /home/kingbase/cluster/install/kingbase/data
   port            54321
-  start_time      2026-09-20 22:19:13  (up 5d 20h)
+  start_time      2026-09-20 22:19:13  (up 6d 15h)
   connections     5 / 97  (max_connections 100 - superuser_reserved 3)
 
 inst.downstreams: 1
@@ -47,8 +47,8 @@ inst.upstream: not_applicable  (primary)
 inst.databases: 5, total 382 MB
   test      325 MB
   esrep      15 MB
-  kingbase   14 MB
   mydb       14 MB
+  kingbase   14 MB
   security   14 MB
 
 inst.disk  (filesystem of data_directory)
@@ -72,20 +72,20 @@ echo EXIT_CODE=$?
 ```
 
 ```text
-status  OK  (KingbaseES V008R006C009B0014, standby, system@local, 2026-09-26T19:19:06+08:00)
+status  OK  (KingbaseES V008R006C009B0014, standby, system@local, 2026-09-27T13:37:22+08:00)
 
 inst.info
   version         V008R006C009B0014
   data_directory  /home/kingbase/cluster/install/kingbase/data
   port            54321
-  start_time      2026-09-23 15:44:58  (up 3d 3h)
-  connections     3 / 97  (max_connections 100 - superuser_reserved 3)
+  start_time      2026-09-23 15:44:58  (up 3d 21h)
+  connections     5 / 97  (max_connections 100 - superuser_reserved 3)
 
 inst.upstream
   status    streaming
   upstream  192.168.105.10:54321
   slot      repmgr_slot_2
-  last_msg  4s ago
+  last_msg  11s ago
 
 inst.downstreams: 0
 
@@ -104,7 +104,7 @@ EXIT_CODE=0
 
 - 备库上游排在前面，数据来自 `sys_stat_wal_receiver`：从哪里收 WAL、走哪个槽、最后一条消息是多久前。
 - `last_msg` 只展示，不判。主库空闲时每 `wal_receiver_status_interval`（默认 10 秒）才发一条，几秒是正常值。
-- WAL 接收进程被暂停时（比如被 SIGSTOP），状态仍然是 `streaming`，status 不会报。如果 `last_msg` 一直在涨，请自己去备库上看 WAL 接收进程。
+- WAL 接收进程被暂停时（比如被 SIGSTOP），状态仍然是 `streaming`，status 不会报。如果 `last_msg` 一直在涨，请自己去备库上看 WAL 接收进程。[`slots`]({{< relref "/docs/reference/slots#按-verify-行往下查" >}}) 页有这种情况的实采。
 
 ## 连接全部占满
 
@@ -114,17 +114,17 @@ echo EXIT_CODE=$?
 ```
 
 ```text
-status  FAIL  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-26T19:19:10+08:00)
+status  FAIL  (KingbaseES V008R006C009B0014, primary, system@local, 2026-09-27T13:38:16+08:00)
 
-[FAIL] inst.connections  连接已用 99 个，达到普通用户可用的 97 个（max_connections 100 减去超级用户保留 3），普通用户已经连不上
-  verify: kbdiag sessions --limit 0  # 看连接是谁占的：按 usename、application_name、client_addr 看有没有扎堆
+[FAIL] inst.connections  98 connections in use, reaching the 97 ordinary users may open (max_connections 100 minus 3 reserved for superusers): ordinary users can no longer connect
+  verify: kbdiag sessions  # who holds the connections: the summary at the top counts them by user, database, application and client
 
 inst.info
   version         V008R006C009B0014
   data_directory  /home/kingbase/cluster/install/kingbase/data
   port            54321
-  start_time      2026-09-20 22:19:13  (up 5d 20h)
-  connections     99 / 97  (max_connections 100 - superuser_reserved 3)
+  start_time      2026-09-20 22:19:13  (up 6d 15h)
+  connections     98 / 97  (max_connections 100 - superuser_reserved 3)
 
 inst.downstreams: 1
   name   address         state      sync
@@ -135,8 +135,8 @@ inst.upstream: not_applicable  (primary)
 inst.databases: 5, total 382 MB
   test      325 MB
   esrep      15 MB
-  kingbase   14 MB
   mydb       14 MB
+  kingbase   14 MB
   security   14 MB
 
 inst.disk  (filesystem of data_directory)
@@ -145,16 +145,16 @@ inst.disk  (filesystem of data_directory)
 EXIT_CODE=2
 ```
 
-- 已用 99 个，超过了 97，因为超级用户还能从保留的连接里进来，kbdiag 自己用的 `system` 连接也在其中。
-- `verify` 行指向 `sessions --limit 0`，用来按用户、应用名、客户端地址看有没有扎堆。
+- 已用 98 个，超过了 97，因为超级用户还能从保留的连接里进来，kbdiag 自己用的 `system` 连接也在其中。
+- `verify` 行指向 [`sessions`]({{< relref "/docs/reference/sessions" >}})，它的汇总按用户、库、应用、客户端给连接计数。[这次采样]({{< relref "/docs/reference/sessions#连接是谁占的" >}})里能看到 `kbdiag_ro` 从 `127.0.0.1` 连进来 93 个 idle 会话。
 
 ## 备库没在收 WAL
 
 这种情况还没在测试环境里造出来，下面的 finding 是从源码里摘的文字，不是实采。备库没有 WAL 接收进程时，status 报：
 
 ```text
-[WARN] inst.upstream  备库没有 WAL 接收进程，没在从主库收 WAL；主库这时挂掉，没有能接管的备库
-  verify: kbdiag slots  # 到主库上跑，看这个备库的槽是不是 inactive
+[WARN] inst.upstream  the standby has no WAL receiver and is not receiving WAL from the primary: if the primary fails now, no standby can take over
+  verify: kbdiag slots  # run on the primary: is this standby's slot inactive?
 ```
 
 有接收进程但状态不是 `streaming` 时，finding 里写的是那个状态。退出码是 1。
@@ -174,13 +174,33 @@ echo EXIT_CODE=$?
 ```
 
 ```text
-status  OK  (KingbaseES V008R006C009B0014, primary, kbdiag_ro@remote, 2026-09-26T19:19:06+08:00)
-...
+status  OK  (KingbaseES V008R006C009B0014, primary, kbdiag_ro@remote, 2026-09-27T13:40:08+08:00)
+
+inst.info
+  version         V008R006C009B0014
+  data_directory  /home/kingbase/cluster/install/kingbase/data
+  port            54321
+  start_time      2026-09-20 22:19:13  (up 6d 15h)
+  connections     5 / 97  (max_connections 100 - superuser_reserved 3)
+
+inst.downstreams: 1
+  name   address         state      sync
+  node2  192.168.105.11  streaming  quorum
+
+inst.upstream: not_applicable  (primary)
+
+inst.databases: 5, total 382 MB
+  test      325 MB
+  esrep      15 MB
+  mydb       14 MB
+  kingbase   14 MB
+  security   14 MB
+
 inst.disk: not_applicable  (remote connection)
 EXIT_CODE=0
 ```
 
-其余各段和上面主库的例子相同。`not_applicable` 不影响结论。
+`not_applicable` 不影响结论。
 
 ## 权限不足时
 
