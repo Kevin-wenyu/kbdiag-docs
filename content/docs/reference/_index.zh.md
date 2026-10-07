@@ -52,7 +52,7 @@ echo $?                  # 0 OK，1 WARN，2 FAIL，3 UNKNOWN
 | `archive` | 归档是不是在正常工作：设置、最后一次成功和失败、等着归档的 WAL；最后一次尝试失败时报 WARN | |
 | `params` | 哪些参数不是默认值、在哪设的（文件和行号）；改了但要重启才生效的每个报 WARN | |
 | `repl` | 从本节点看复制：主库看同步设置和每个备库落后多少；备库看上游、接收和回放。同步备库不够数、回放暂停、备库没在收 WAL 时报 WARN；延迟只展示，不判 | |
-| `cluster` | repmgr 眼里的集群（节点、角色、上游、最近事件），和本节点对照；两个主库、inactive 节点、repmgr 记错的角色、没挂上来的备库报 WARN。没给 `-d` 时连 `esrep` 库 | |
+| `cluster` | repmgr 眼里的集群（节点、角色、上游、最近事件），和本节点对照；两个主库、inactive 节点、repmgr 记错的角色、没挂上来的备库报 WARN；主库上 repmgr.conf 要求同步复制、提交此刻却是异步的也报 WARN（读本节点的 repmgr.conf，只在本机运行时）。没给 `-d` 时连 `esrep` 库 | |
 | `top-objects` | 当前库最大的表（堆、索引、TOAST 分列）和最大的索引。只展示 | `--limit N` |
 | `table <name>` | 一张表：大小、行数、vacuum 和 analyze、冻结年龄、访问、索引；用 freeze、vacuum 的规则判。名字按 SQL 规则（不带引号的折成小写）；找不到是 UNKNOWN | |
 | `top` | `sys_stat_statements` 的累计 Top SQL（自上次重置以来），带每条占全部执行时间的比例；没在收集时明说。只展示 | `--limit N`、`--by time/mean/calls/io/temp` |
