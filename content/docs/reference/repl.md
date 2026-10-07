@@ -122,7 +122,7 @@ downstreams: 0
 EXIT_CODE=0
 ```
 
-- The standby is gone from `downstreams` (0), and `synchronous_standby_names` now reads `(none: asynchronous only)`; it was `ANY 1( node2)` before the injection. So `repl.sync_short` did not fire. kbdiag shows what the server has; the settings changed by themselves during the injection (the earlier lab runs suspected KingbaseES or repmgr degrades the synchronous setting when the standby goes away; this is not verified).
+- The standby is gone from `downstreams` (0), and `synchronous_standby_names` now reads `(none: asynchronous only)`; it was `ANY 1( node2)` before the injection. So `repl.sync_short` did not fire. kbdiag shows what the server has; the the setting changed during the injection because repmgr changed it: with `synchronous='quorum'` in repmgr.conf, repmgrd clears `synchronous_standby_names` about 2 seconds after the standby disconnects (falling back to asynchronous commits) and restores it when the standby reconnects (seen in the lab's hamgr.log, 2026-09-28). It is repmgr, not KingbaseES itself. So on this kind of cluster `repl.sync_short` shows only in that short window; the usual state after a standby is lost is "already asynchronous", which `repl` shows as `(none: asynchronous only)`.
 - Use [`slots`]({{< relref "/docs/reference/slots" >}}) on the primary to see the slot turned inactive, and [`cluster`]({{< relref "/docs/reference/cluster" >}}) for repmgr's view.
 
 ## WARN findings not produced in the lab

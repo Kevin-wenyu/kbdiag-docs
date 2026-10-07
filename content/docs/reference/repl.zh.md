@@ -122,7 +122,7 @@ downstreams: 0
 EXIT_CODE=0
 ```
 
-- `downstreams` 里没有备库了（0），`synchronous_standby_names` 现在读成 `(none: asynchronous only)`，注入前是 `ANY 1( node2)`。所以 `repl.sync_short` 没有触发。kbdiag 显示的是服务器当前的值；注入期间这个设置自己变了（之前的实验里怀疑是 KingbaseES 或 repmgr 在备库没了之后自动降级同步设置，没有验证）。
+- `downstreams` 里没有备库了（0），`synchronous_standby_names` 现在读成 `(none: asynchronous only)`，注入前是 `ANY 1( node2)`。所以 `repl.sync_short` 没有触发。kbdiag 显示的是服务器当前的值；注入期间这个设置是 repmgr 改的：repmgr.conf 里是 `synchronous='quorum'` 时，备库断开约 2 秒后 repmgrd 会把 `synchronous_standby_names` 清空，降成异步提交，备库重连后再改回来（2026-09-28 实验环境 hamgr.log 里看到的）。这是 repmgr 做的，不是 KingbaseES 内核的行为。所以在这种集群上 `repl.sync_short` 只会在那一两秒里出现，备库丢了之后更常见的是"已经是异步了"，`repl` 显示为 `(none: asynchronous only)`。
 - 到主库上跑 [`slots`]({{< relref "/docs/reference/slots" >}}) 看槽变成不活跃，跑 [`cluster`]({{< relref "/docs/reference/cluster" >}}) 看 repmgr 的看法。
 
 ## 实验环境没有造出来的 WARN
