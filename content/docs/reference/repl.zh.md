@@ -142,4 +142,4 @@ EXIT_CODE=0
 | 64 | 参数错误 |
 | 69 | 连不上数据库 |
 
-[回到使用手册]({{< relref "/docs/reference" >}})
+[返回使用手册]({{< relref "/docs/reference" >}})

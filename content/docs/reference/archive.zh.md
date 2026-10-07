@@ -110,4 +110,4 @@ EXIT_CODE=1
 | 64 | 参数错误 |
 | 69 | 连不上数据库 |
 
-[回到使用手册]({{< relref "/docs/reference" >}})
+[返回使用手册]({{< relref "/docs/reference" >}})
