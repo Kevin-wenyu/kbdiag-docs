@@ -130,7 +130,7 @@ EXIT_CODE=0
 按源码写，不是实采：
 
 - `repl.replay_paused`（WARN）：备库上回放被暂停（`sys_wal_replay_pause()`）。查询照常，但越落越远，故障切换时得先回放完收到的全部。除非是有意暂停，`fix` 是 `SELECT sys_wal_replay_resume()`。实验环境没有这个注入：在那里暂停回放会卡住主库的所有提交（`synchronous_commit` 是 `remote_apply`）。
-- `repl.sync_short`（WARN）：`synchronous_standby_names` 要的备库数比服务器算作同步候选（`sync` 或 `quorum`）的多。文本说提交要么在等，要么已经不等了，同步副本没有保证。它是 WARN 不是 FAIL，因为实验环境里备库断开后同步提交照样过去了。kbdiag 数服务器给的 `sync_state`，不自己重算候选规则，并且只在 `synchronous_commit` 让提交等备库时才判（这是本连接的值，按角色或按库另设的看不到）。
+- `repl.sync_short`（WARN）：`synchronous_standby_names` 要的备库数比服务器算作同步候选（`sync` 或 `quorum`）的多。文本说提交要么在等，要么已经不等了，同步副本没有保证。它是 WARN 不是 FAIL，因为实验环境里备库断开后同步提交照样过去了（repmgr 已经降成异步，见上）。kbdiag 数服务器给的 `sync_state`，不自己重算候选规则，并且只在 `synchronous_commit` 让提交等备库时才判（这是本连接的值，按角色或按库另设的看不到）。
 
 ## 退出码
 

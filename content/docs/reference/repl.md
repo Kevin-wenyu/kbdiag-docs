@@ -130,7 +130,7 @@ EXIT_CODE=0
 Taken from the source, not captured:
 
 - `repl.replay_paused` (WARN): replay is paused on a standby (`sys_wal_replay_pause()`). Queries still run, but it falls further behind and a failover would have to replay everything received first. The `fix` is `SELECT sys_wal_replay_resume()` unless it was paused on purpose. It has no injection in the lab: pausing replay there blocks every commit on the primary (`synchronous_commit` is `remote_apply`).
-- `repl.sync_short` (WARN): `synchronous_standby_names` needs more standbys than the server counts as synchronous candidates (`sync` or `quorum`). The text says commits either wait or the server has stopped waiting, so the synchronous copy is not guaranteed. It is a WARN rather than FAIL because in the lab, commits went through after the standby disconnected. kbdiag counts the server's own `sync_state` instead of redoing the candidate rules, and it judges only when `synchronous_commit` makes commits wait for a standby (this connection's value; per-role or per-database settings are not visible).
+- `repl.sync_short` (WARN): `synchronous_standby_names` needs more standbys than the server counts as synchronous candidates (`sync` or `quorum`). The text says commits either wait or the server has stopped waiting, so the synchronous copy is not guaranteed. It is a WARN rather than FAIL because in the lab, commits went through after the standby disconnected (repmgr had switched to asynchronous, see above). kbdiag counts the server's own `sync_state` instead of redoing the candidate rules, and it judges only when `synchronous_commit` makes commits wait for a standby (this connection's value; per-role or per-database settings are not visible).
 
 ## Exit codes
 
