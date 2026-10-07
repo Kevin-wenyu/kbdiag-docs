@@ -8,7 +8,7 @@ cascade:
 
 Snapshot of the [kbdiag README](https://github.com/Kevin-wenyu/kbdiag#readme) at generation time.
 
-Command pages: [`status`]({{< relref "/docs/reference/status" >}}) · [`sessions`]({{< relref "/docs/reference/sessions" >}}) · [`session`]({{< relref "/docs/reference/session" >}}) · [`locks`]({{< relref "/docs/reference/locks" >}}) · [`txn`]({{< relref "/docs/reference/txn" >}}) · [`waits`]({{< relref "/docs/reference/waits" >}}) · [`slots`]({{< relref "/docs/reference/slots" >}})
+Command pages:[`status`]({{< relref "/docs/reference/status" >}}) · [`sessions`]({{< relref "/docs/reference/sessions" >}}) · [`session`]({{< relref "/docs/reference/session" >}}) · [`locks`]({{< relref "/docs/reference/locks" >}}) · [`txn`]({{< relref "/docs/reference/txn" >}}) · [`waits`]({{< relref "/docs/reference/waits" >}}) · [`slots`]({{< relref "/docs/reference/slots" >}}) · [`space`]({{< relref "/docs/reference/space" >}}) · [`freeze`]({{< relref "/docs/reference/freeze" >}}) · [`vacuum`]({{< relref "/docs/reference/vacuum" >}}) · [`archive`]({{< relref "/docs/reference/archive" >}}) · [`params`]({{< relref "/docs/reference/params" >}}) · [`repl`]({{< relref "/docs/reference/repl" >}}) · [`cluster`]({{< relref "/docs/reference/cluster" >}}) · [`top-objects`]({{< relref "/docs/reference/top-objects" >}}) · [`table`]({{< relref "/docs/reference/table" >}}) · [`top`]({{< relref "/docs/reference/top" >}}) · [`progress`]({{< relref "/docs/reference/progress" >}}) · [`checkpoint`]({{< relref "/docs/reference/checkpoint" >}}) · [`wal`]({{< relref "/docs/reference/wal" >}}) · [`seq`]({{< relref "/docs/reference/seq" >}})
 
 KingbaseES command-line diagnostics. One static binary that talks the wire protocol directly: no `ksql`, no interactive screens. Each command runs a single read-only look at a live instance and prints a verdict, the evidence, and the next command to run. Works on single nodes and on repmgr primary/standby clusters.
 
@@ -46,6 +46,20 @@ echo $?                  # 0 OK, 1 WARN, 2 FAIL, 3 UNKNOWN
 | `txn` | The oldest xid holding back vacuum and who holds it, open transactions, prepared (2PC) ones; WARN on old ones | `--limit N`, `--xact-warn S`, `--prepared-warn S` |
 | `waits` | What the sessions doing something wait on, grouped by wait event and state, biggest pile first; idle sessions and background processes only counted | |
 | `slots` | Replication slots, inactive ones and the ones keeping the most WAL first; WARN on inactive ones | |
+| `space` | Where the space goes: the filesystems holding the data directory, WAL and tablespaces (local runs only), WAL size against `max_wal_size` and `wal_keep_segments`, database and tablespace sizes. FAIL when the filesystem holding the data directory or WAL has less free space than one WAL segment; everything else is shown only | |
+| `freeze` | How far each database is from transaction ID wraparound, and the oldest tables of this one; WARN past `autovacuum_freeze_max_age`, FAIL at the stop limit where new transaction IDs are refused | `--limit N` |
+| `vacuum` | The tables with the most dead tuples and where autovacuum's threshold is for each, what is vacuuming now; WARN when nothing will clean them (autovacuum or track_counts off, or a table past its threshold with autovacuum off for it). Primary only | `--limit N` |
+| `archive` | Whether WAL archiving works: the settings, the last success and failure, WAL waiting to be archived; WARN when the last attempt failed | |
+| `params` | The parameters someone set (not at their default) and where: file and line; WARN for each change that waits for a restart | |
+| `repl` | Replication from this node's side: on a primary the synchronous settings and how far each standby is behind; on a standby its upstream, receive and replay. WARN when fewer synchronous standbys stream than asked for, replay is paused, or a standby receives no WAL. Lag is shown, not judged | |
+| `cluster` | repmgr's view (nodes, roles, upstreams, latest events) checked against this node; WARN on two primaries, inactive nodes, a role repmgr has wrong, a standby not attached. Connects to database `esrep` unless `-d` is given | |
+| `top-objects` | The largest tables (heap, indexes, TOAST) and indexes of this database. Shows only | `--limit N` |
+| `table <name>` | One table: size, rows, vacuum and analyze, freeze age, access, indexes; judged with the freeze and vacuum rules. The name follows SQL rules (unquoted folds to lower case); not found is UNKNOWN | |
+| `top` | Cumulative top SQL from `sys_stat_statements` (since the last reset), with each statement's share of all execution time; says so when statements are not being collected. Shows only | `--limit N`, `--by time/mean/calls/io/temp` |
+| `progress` | How far running VACUUM, CREATE INDEX, CLUSTER / VACUUM FULL and CHECKPOINT have got. Shows only | |
+| `checkpoint` | The last checkpoint, timed vs requested checkpoints, who writes dirty buffers (checkpointer, bgwriter, backends), and the settings. Shows only | |
+| `wal` | Where WAL is, how much `sys_wal` holds, and what keeps it: `max_wal_size`, `wal_keep_segments`, each slot, files waiting to be archived. Shows only | |
+| `seq` | Sequences of this database by how much of their range is used; FAIL when one cannot hand out another value | `--limit N` |
 
 Defaults: idle in transaction 300 s, lock wait 10 s, transaction 300 s, prepared transaction 900 s, all WARN. `--limit` only trims what is shown; findings always cover every row.
 
