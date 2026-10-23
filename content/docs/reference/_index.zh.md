@@ -8,7 +8,7 @@ cascade:
 
 内容来自 [kbdiag README](https://github.com/Kevin-wenyu/kbdiag#readme)，是生成时的快照。
 
-命令页：[`status`]({{< relref "/docs/reference/status" >}}) · [`sessions`]({{< relref "/docs/reference/sessions" >}}) · [`session`]({{< relref "/docs/reference/session" >}}) · [`locks`]({{< relref "/docs/reference/locks" >}}) · [`txn`]({{< relref "/docs/reference/txn" >}}) · [`waits`]({{< relref "/docs/reference/waits" >}}) · [`slots`]({{< relref "/docs/reference/slots" >}}) · [`space`]({{< relref "/docs/reference/space" >}}) · [`freeze`]({{< relref "/docs/reference/freeze" >}}) · [`vacuum`]({{< relref "/docs/reference/vacuum" >}}) · [`archive`]({{< relref "/docs/reference/archive" >}}) · [`params`]({{< relref "/docs/reference/params" >}}) · [`repl`]({{< relref "/docs/reference/repl" >}}) · [`cluster`]({{< relref "/docs/reference/cluster" >}}) · [`top-objects`]({{< relref "/docs/reference/top-objects" >}}) · [`table`]({{< relref "/docs/reference/table" >}}) · [`top`]({{< relref "/docs/reference/top" >}}) · [`progress`]({{< relref "/docs/reference/progress" >}}) · [`checkpoint`]({{< relref "/docs/reference/checkpoint" >}}) · [`wal`]({{< relref "/docs/reference/wal" >}}) · [`seq`]({{< relref "/docs/reference/seq" >}})
+命令页：[`status`]({{< relref "/docs/reference/status" >}}) · [`sessions`]({{< relref "/docs/reference/sessions" >}}) · [`session`]({{< relref "/docs/reference/session" >}}) · [`locks`]({{< relref "/docs/reference/locks" >}}) · [`txn`]({{< relref "/docs/reference/txn" >}}) · [`waits`]({{< relref "/docs/reference/waits" >}}) · [`slots`]({{< relref "/docs/reference/slots" >}}) · [`space`]({{< relref "/docs/reference/space" >}}) · [`freeze`]({{< relref "/docs/reference/freeze" >}}) · [`vacuum`]({{< relref "/docs/reference/vacuum" >}}) · [`archive`]({{< relref "/docs/reference/archive" >}}) · [`params`]({{< relref "/docs/reference/params" >}}) · [`repl`]({{< relref "/docs/reference/repl" >}}) · [`cluster`]({{< relref "/docs/reference/cluster" >}}) · [`top-objects`]({{< relref "/docs/reference/top-objects" >}}) · [`table`]({{< relref "/docs/reference/table" >}}) · [`top`]({{< relref "/docs/reference/top" >}}) · [`progress`]({{< relref "/docs/reference/progress" >}}) · [`checkpoint`]({{< relref "/docs/reference/checkpoint" >}}) · [`wal`]({{< relref "/docs/reference/wal" >}}) · [`seq`]({{< relref "/docs/reference/seq" >}}) · [`license`]({{< relref "/docs/reference/license" >}})
 
 KingbaseES 命令行诊断工具。单个静态二进制，直连线协议：不调 `ksql`，不进交互界面。每条命令对运行中的实例做一次只读查询，输出结论、证据和下一步该跑的命令。支持单机和 repmgr 主备集群。
 
@@ -60,6 +60,7 @@ echo $?                  # 0 OK，1 WARN，2 FAIL，3 UNKNOWN
 | `checkpoint` | 最近一次 checkpoint，定时和被请求的各多少，脏页是谁写的（checkpointer、bgwriter、后端），相关参数。只展示 | |
 | `wal` | WAL 写到哪了、`sys_wal` 多大，以及是什么让它留着：`max_wal_size`、`wal_keep_segments`、每个槽、等着归档的文件。只展示 | |
 | `seq` | 当前库的序列，按用掉的比例排；取不出下一个值时报 FAIL | `--limit N` |
+| `license` | 授权还剩几天，以及授权文件、版本模板、版本号、生产日期、绑定的 MAC、最大连接数。KES 只在实例启动时校验授权：剩 30 天以内报 WARN（服务器自己的提示线），到期报 FAIL（实例照跑，但再启动就起不来）。不展示用户名称和项目名称 | |
 
 默认阈值：idle in transaction 300 秒，等锁 10 秒，事务 300 秒，两阶段事务 900 秒，都报 WARN。`--limit` 只影响显示，判定始终覆盖全部行。
 
